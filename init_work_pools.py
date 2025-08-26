@@ -15,6 +15,9 @@ Behavior:
     - Waits until the Prefect server is reachable via its /health endpoint.
     - Creates any missing work pools defined in the beamline's prefect.yaml.
     - Deploys all flows defined in the beamline's prefect.yaml.
+    - Creates/updates Prefect Secret blocks for GLOBUS_CLIENT_ID and GLOBUS_CLIENT_SECRET
+      if the corresponding environment variables are present. Otherwise warns and continues.
+
 
 Environment Variables:
     BEAMLINE          The beamline identifier (e.g., 832). Required.
@@ -22,13 +25,16 @@ Environment Variables:
                       Default: http://prefect_server:4200/api
 """
 
+import httpx
+import logging
 import os
+import subprocess
 import sys
 import time
-import subprocess
-import httpx
 import yaml
-import logging
+
+from prefect.blocks.system import Secret
+
 
 # ---------------- Logging Setup ---------------- #
 logger = logging.getLogger("init_work_pools")
@@ -118,10 +124,25 @@ def deploy_flows(prefect_yaml: str, beamline: str):
     logger.info(f"[Init:{beamline}] Done.")
 
 
+def ensure_globus_secrets(beamline: str):
+    globus_client_id = os.environ.get("GLOBUS_CLIENT_ID")
+    globus_client_secret = os.environ.get("GLOBUS_CLIENT_SECRET")
+
+    if globus_client_id and globus_client_secret:
+        # Create or update Prefect Secret blocks for Globus credentials
+        try:
+            Secret(value=globus_client_id).save(name="globus-client-id", overwrite=True)
+            Secret(value=globus_client_secret).save(name="globus-client-secret", overwrite=True)
+            logger.info(f"[Init:{beamline}] Created/updated Prefect Secret blocks for Globus credentials.")
+        except Exception as e:
+            logger.warning(f"[Init:{beamline}] Failed to create/update Prefect Secret blocks: {str(e)}")
+
+
 def main():
     beamline, prefect_yaml, api_url = check_env()
     logger.info(f"[Init:{beamline}] Using prefect.yaml at {prefect_yaml}")
     wait_for_prefect_server(api_url, beamline)
+    ensure_globus_secrets(beamline)
     ensure_work_pools(prefect_yaml, beamline)
     deploy_flows(prefect_yaml, beamline)
 
