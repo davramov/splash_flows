@@ -1,0 +1,31 @@
+name: bl11021
+prefect-version: 3.4.2
+deployments:
+- name: new_file_11021
+  entrypoint: orchestration/flows/bl11021/move.py:process_new_11021_file
+  work_pool:
+    name: new_file_11021_pool
+    work_queue_name: new_file_11021_queue
+
+- name: new_file_11021_flight_check
+  entrypoint: orchestration/flows/bl11021/move.py:move_11021_flight_check
+  work_pool:
+    name: new_file_11021_pool
+    work_queue_name: move_file_11021_flight_check_queue
+  schedules:
+  - cron: "0 */12 * * *" # Every 12 hours
+    slug: "test-move-11021-flight-check"
+    timezone: America/Los_Angeles
+    active: true
+
+- name: run_11021_dispatcher
+  entrypoint: orchestration/flows/bl11021/dispatcher.py:dispatcher
+  work_pool:
+    name: dispatcher_11021_pool
+    work_queue_name: dispatcher_11021_queue
+
+- name: prune_data11021
+  entrypoint: orchestration/flows/bl11021/move.py:_prune_globus_endpoint
+  work_pool:
+    name: prune_11021_pool
+    work_queue_name: prune_11021_queue
