@@ -26,7 +26,7 @@ def dispatcher(
     :raises TypeError: If the provided configuration is not a dict or Config11021.
     """
 
-    logger.info("Starting dispatcher flow for BL 6.3.1")
+    logger.info("Starting dispatcher flow for BL 11.0.2.1")
     logger.info(f"Parameters received: file_path={file_path}, is_export_control={is_export_control}")
 
     # Validate inputs and raise errors if necessary. The ValueErrors prevent the rest of the flow from running.

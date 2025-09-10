@@ -137,7 +137,7 @@ def process_new_11021_file(
     config: Config11021
 ) -> None:
     """
-    Flow to process a new file at BL 6.3.1
+    Flow to process a new file at BL 11.0.2.1
     1. Copy the file from the data11021 to NERSC CFS. Ingest file path in SciCat.
     2. Schedule pruning from data11021. 6 months from now.
     3. Copy the file from NERSC CFS to NERSC HPSS. Ingest file path in SciCat.
