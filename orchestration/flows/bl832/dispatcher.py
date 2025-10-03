@@ -5,6 +5,8 @@ from prefect.deployments.deployments import run_deployment
 from pydantic import BaseModel, ValidationError, Field
 from typing import Any, Optional, Union
 
+from orchestration.flows.bl832.move import process_new_832_file_task
+
 
 class FlowParameterMapper:
     """
@@ -99,7 +101,7 @@ async def run_specific_flow(flow_name: str, parameters: dict) -> None:
         raise
 
 
-@flow(name="dispatcher")
+@flow(name="dispatcher", flow_run_name="dispatcher-{file_path}")
 async def dispatcher(
     file_path: Optional[str] = None,
     is_export_control: bool = False,
@@ -125,15 +127,18 @@ async def dispatcher(
         decision_settings = await JSON.load("decision-settings")
         if decision_settings.value.get("new_832_file_flow/new_file_832"):
             logger.info("Running new_file_832 flow...")
-            await run_specific_flow("new_832_file_flow/new_file_832",
-                                    FlowParameterMapper.get_flow_parameters(
-                                        "new_832_file_flow/new_file_832",
-                                        available_params))
-            logger.info("Completed new_file_832 flow.")
+            process_new_832_file_task(
+                file_path=available_params.get("file_path"),
+                is_export_control=available_params.get("is_export_control", False),
+                send_to_nersc=not available_params.get("is_export_control", False),  # Infer from is_export_control
+                config=available_params.get("config")
+            )
+
+            logger.info("Completed new_file_832 task.")
     except Exception as e:
-        logger.error(f"new_832_file_flow/new_file_832 flow failed: {e}")
+        logger.error(f"new_832_file_flow/new_file_832 task failed: {e}")
         # Optionally, raise a specific ValueError
-        raise ValueError("new_file_832 flow Failed") from e
+        raise ValueError("new_file_832 task Failed") from e
 
     # Prepare ALCF and NERSC flows to run asynchronously, based on settings
     tasks = []
@@ -165,7 +170,7 @@ if __name__ == "__main__":
     """
     try:
         # Setup decision settings based on input parameters
-        setup_decision_settings(alcf_recon=True, nersc_recon=False, new_file_832=False)
+        setup_decision_settings(alcf_recon=True, nersc_recon=True, new_file_832=True)
         # Run the main decision flow with the specified parameters
         # asyncio.run(dispatcher(
         #     config={},  # PYTEST, ALCF, NERSC

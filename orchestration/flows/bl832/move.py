@@ -45,6 +45,7 @@ def transfer_spot_to_data(
     logger.info(f"spot832 to data832 globus task_id: {task}")
     return success
 
+
 @task(name="transfer_data_to_nersc")
 def transfer_data_to_nersc(
     file_path: str,
@@ -53,17 +54,17 @@ def transfer_data_to_nersc(
     nersc832: GlobusEndpoint,
 ):
     logger = get_run_logger()
-    
+
     # if source_file begins with "/", it will mess up os.path.join
     if file_path[0] == "/":
         file_path = file_path[1:]
 
     # Initialize config
     config = Config832()
-    
+
     # Import here to avoid circular imports
     from orchestration.transfer_controller import get_transfer_controller, CopyMethod
-    
+
     # Change prometheus_metrics=None if do not want to push metrics
     # prometheus_metrics = None
     prometheus_metrics = PrometheusMetrics() 
@@ -73,7 +74,7 @@ def transfer_data_to_nersc(
         config=config,
         prometheus_metrics=prometheus_metrics
     )
-    
+
     # Use transfer controller to copy the file
     # The controller automatically handles metrics collection and pushing
     logger.info(f"Transferring {file_path} from data832 to nersc")
@@ -85,11 +86,29 @@ def transfer_data_to_nersc(
 
     return success
 
+
 @flow(name="new_832_file_flow")
-def process_new_832_file(file_path: str,
-                         is_export_control=False,
-                         send_to_nersc=True,
-                         config=None):
+def process_new_832_file_flow(
+    file_path: str,
+    is_export_control=False,
+    send_to_nersc=True,
+    config=None
+):
+    process_new_832_file_task(
+        file_path=file_path,
+        is_export_control=is_export_control,
+        send_to_nersc=send_to_nersc,
+        config=config
+    )
+
+
+@task(name="new_832_file_task")
+def process_new_832_file_task(
+    file_path: str,
+    is_export_control=False,
+    send_to_nersc=True,
+    config=None
+):
     """
     Sends a file along a path:
         - Copy from spot832 to data832
