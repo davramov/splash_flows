@@ -130,7 +130,7 @@ async def dispatcher(
             process_new_832_file_task(
                 file_path=available_params.get("file_path"),
                 is_export_control=available_params.get("is_export_control", False),
-                send_to_nersc=not available_params.get("is_export_control", False),  # Infer from is_export_control
+                send_to_nersc=True,
                 config=available_params.get("config")
             )
 
