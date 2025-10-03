@@ -83,8 +83,8 @@ def setup_decision_settings(alcf_recon: bool, nersc_recon: bool, new_file_832: b
     return settings
 
 
-@task(name="run_specific_flow")
-async def run_specific_flow(flow_name: str, parameters: dict) -> None:
+@task(name="run_recon_flow_async")
+async def run_recon_flow_async(flow_name: str, parameters: dict) -> None:
     """
     This task is used to run a specific flow with dynamically provided parameters.
 
@@ -144,11 +144,11 @@ async def dispatcher(
     tasks = []
     if decision_settings.value.get("alcf_recon_flow/alcf_recon_flow"):
         alcf_params = FlowParameterMapper.get_flow_parameters("alcf_recon_flow/alcf_recon_flow", available_params)
-        tasks.append(run_specific_flow("alcf_recon_flow/alcf_recon_flow", alcf_params))
+        tasks.append(run_recon_flow_async("alcf_recon_flow/alcf_recon_flow", alcf_params))
 
     if decision_settings.value.get("nersc_recon_flow/nersc_recon_flow"):
         nersc_params = FlowParameterMapper.get_flow_parameters("nersc_recon_flow/nersc_recon_flow", available_params)
-        tasks.append(run_specific_flow("nersc_recon_flow/nersc_recon_flow", nersc_params))
+        tasks.append(run_recon_flow_async("nersc_recon_flow/nersc_recon_flow", nersc_params))
 
     # Run ALCF and NERSC flows in parallel, if any
     if tasks:
