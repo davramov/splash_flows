@@ -90,17 +90,17 @@ globus:
       uuid: df82346e-9a15-11ea-b3c4-0ae144191ee3
       name: nersc832
 
-    ride832_raw:
+    compute_dtn_832_raw:
       root_path: /beamlines/bl832/raw/
-      uri: ride.als.lbl.gov
+      uri: computeDTN.als.lbl.gov
       uuid: TBD
-      name: ride832_raw
+      name: compute_dtn_832_raw
 
-    ride832_scratch:
+    compute_dtn_832_scratch:
       root_path: /beamlines/bl832/processed/
-      uri: ride.als.lbl.gov
+      uri: computeDTN.als.lbl.gov
       uuid: TBD
-      name: ride832_scratch
+      name: compute_dtn_832_scratch
 
     nersc7012:
       root_path: /global/cfs/cdirs/als/gsharing/data_mover/7012
