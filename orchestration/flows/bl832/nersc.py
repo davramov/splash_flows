@@ -500,7 +500,7 @@ def nersc_recon_flow(
         destination=config.data832_scratch
     )
 
-    logger.info("Copy from NERSC /global/cfs/cdirs/als/data_mover/8.3.2/scratch to ride.als.lbl.gov")
+    logger.info("Copy from NERSC /global/cfs/cdirs/als/data_mover/8.3.2/scratch to compute-dtn.als.lbl.gov")
 
     transfer_controller.copy(
         file_path=tiff_file_path,

@@ -435,7 +435,7 @@ def alcf_recon_flow(
         )
 
         logger.info(f"Transferring {file_name} from {config.alcf832_scratch} "
-                    f"at ALCF to {config.ride832_scratch} at ride.als.lbl.gov")
+                    f"at ALCF to {config.compute_dtn_832_scratch}")
 
         transfer_controller.copy(
             file_path=scratch_path_tiff,
@@ -454,7 +454,7 @@ def alcf_recon_flow(
         )
 
         logger.info(f"Transferring {file_name} from {config.alcf832_scratch} "
-                    f"at ALCF to {config.ride832_scratch} at ride.als.lbl.gov")
+                    f"at ALCF to {config.compute_dtn_832_scratch}")
         transfer_controller.copy(
             file_path=scratch_path_zarr,
             source=config.alcf832_scratch,
