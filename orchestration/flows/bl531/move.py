@@ -134,7 +134,7 @@ def _prune_globus_endpoint(
 @flow(name="new_531_file_flow", flow_run_name="process_new-{file_path}")
 def process_new_531_file(
     file_path: str,
-    config: Config531
+    config: Optional[Config531] = None
 ) -> None:
     """
     Flow to process a new file at BL 5.3.1

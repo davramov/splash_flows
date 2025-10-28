@@ -9,5 +9,5 @@ class Config531:
         self.endpoints = transfer.build_endpoints(config)
         self.apps = transfer.build_apps(config)
         self.tc: TransferClient = transfer.init_transfer_client(self.apps["als_transfer"])
-        self.bl531_nersc_alsdev = self.endpoints["bl531-nersc-alsdev"]
+        self.bl531_nersc_alsdev = self.endpoints["bl531-nersc_alsdev"]
         self.bl531_compute_dtn = self.endpoints["bl531-compute-dtn"]
