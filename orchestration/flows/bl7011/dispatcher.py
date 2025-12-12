@@ -57,7 +57,7 @@ def dispatcher(
         for attr in required_attrs:
             group.attrs[attr] = metadata.get(attr, 'Unknown')
 
-        wrapper_h5['entry'] = h5py.ExternalLink(file_path, "entry")
+        wrapper_h5['entry'] = h5py.ExternalLink(file_path, "/entry")
 
     try:
         process_new_7011_file_task(
