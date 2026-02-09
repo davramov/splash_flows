@@ -16,6 +16,7 @@ from typing import Optional
 
 from orchestration.flows.bl832.config import Config832
 from orchestration.flows.bl832.job_controller import get_controller, HPC, TomographyHPCController
+from orchestration.prune_controller import get_prune_controller, PruneMethod
 from orchestration.transfer_controller import get_transfer_controller, CopyMethod
 from orchestration.flows.bl832.streaming_mixin import (
     NerscStreamingMixin, SlurmJobBlock, cancellation_hook, monitor_streaming_job, save_block
@@ -582,369 +583,6 @@ date
             else:
                 return False
             
-#     def segmentation(
-#         self,
-#         recon_folder_path: str = "",
-#         num_nodes: int = 4,
-#     ) -> dict:
-#         """
-#         Run SAM3 segmentation at NERSC Perlmutter (optimized).
-#         """
-#         logger.info("Starting NERSC segmentation process.")
-
-#         user = self.client.user()
-#         pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
-#         cfs_path = "/global/cfs/cdirs/als/data_mover/8.3.2"
-#         conda_env_path = f"{cfs_path}/envs/sam3"
-        
-#         # Paths
-#         # seg_scripts_dir = f"{cfs_path}/tomography_segmentation_scripts/forge_feb_seg_model_demo_v2/forge_feb_seg_model_demo/"
-#         seg_scripts_dir = f"{cfs_path}/tomography_segmentation_scripts/inference_v4/forge_feb_seg_model_demo/"
-#         checkpoints_dir = f"{cfs_path}/tomography_segmentation_scripts/sam3_finetune/sam3/"
-#         hf_cache_dir = f"{cfs_path}/tomography_segmentation_scripts/.cache/huggingface"
-
-#         bpe_path = f"{checkpoints_dir}/bpe_simple_vocab_16e6.txt.gz"
-#         original_checkpoint = f"{checkpoints_dir}/sam3.pt"
-#         finetuned_checkpoint = f"{checkpoints_dir}/checkpoint.pt"
-        
-#         input_dir = f"{pscratch_path}/8.3.2/scratch/{recon_folder_path}"
-#         output_folder = recon_folder_path.replace('/rec', '/seg')
-#         output_dir = f"{pscratch_path}/8.3.2/scratch/{output_folder}"
-        
-#         logger.info(f"Input directory: {input_dir}")
-#         logger.info(f"Output directory: {output_dir}")
-#         logger.info(f"HuggingFace cache: {hf_cache_dir}")
-        
-#         batch_size = 8        
-#         nproc_per_node = 4
-        
-#         prompts = ["Cortex", "Phloem Fibers", "Air-based Pith cells", 
-#                 "Water-based Pith cells", "Xylem vessels"]
-#         prompts_str = " ".join([f'"{p}"' for p in prompts])
-        
-#         if num_nodes <= 4:
-#             qos = "realtime"
-#         else:
-#             qos = "regular"
-        
-#         walltime = "00:15:00"
-
-#         job_name = f"seg_{Path(recon_folder_path).name}"
-
-#         job_script = f"""#!/bin/bash
-# #SBATCH -q {qos}
-# #SBATCH -A als
-# #SBATCH -N {num_nodes}                          # 4 nodes = 16 GPUs total
-# #SBATCH -C gpu
-# #SBATCH --job-name={job_name}
-# #SBATCH --time={walltime}               # Reduce to 1 hour (500 images takes ~10 min)
-# #SBATCH --ntasks-per-node=1           
-# #SBATCH --gpus-per-node=4             
-# #SBATCH --cpus-per-task=128           
-# #SBATCH --output={pscratch_path}/tomo_seg_logs/%x_%j.out
-# #SBATCH --error={pscratch_path}/tomo_seg_logs/%x_%j.err
-
-# # Get master node
-# export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
-# export MASTER_PORT=29500
-
-# # Create output and log directories
-# mkdir -p {output_dir}
-# # mkdir -p logs
-
-# # Load your conda environment
-# module load conda
-# # conda activate /pscratch/sd/x/xchong/envs/sam3
-# conda activate {conda_env_path}
-
-# echo "============================================================"
-# echo "JOB STARTED: $(date)"
-# echo "============================================================"
-# echo "Master: $MASTER_ADDR:$MASTER_PORT"
-# echo "Nodes: $SLURM_JOB_NODELIST"
-# echo "Job ID: $SLURM_JOB_ID"
-# echo "GPUs: $((SLURM_NNODES * 4))"
-
-# # Count actual images
-# NUM_IMAGES=$(ls {input_dir}/*.tif* 2>/dev/null | wc -l)
-# echo "Images to process: $NUM_IMAGES"
-# echo "============================================================"
-
-# # Record start time
-# START_TIME=$(date +%s)
-
-# # Change to script directory
-# cd {seg_scripts_dir}
-
-# # Run inference (no nsys for production)
-# srun --ntasks-per-node=1 --gpus-per-task=4 bash -c "
-# torchrun \
-#     --nnodes=\$SLURM_NNODES \
-#     --nproc_per_node={nproc_per_node} \
-#     --rdzv_id=\$SLURM_JOB_ID \
-#     --rdzv_backend=c10d \
-#     --rdzv_endpoint=$MASTER_ADDR:$MASTER_PORT \
-#     src/inference_v4.py \
-#     --input-dir {input_dir} \
-#     --output-dir {output_dir} \
-#     --patch-size 640 \
-#     --batch-size {batch_size} \
-#     --confidence 0.5 \
-#     --prompts {prompts_str} \\
-#     --bpe-path {bpe_path} \\
-#     --original-checkpoint {original_checkpoint} \\
-#     --finetuned-checkpoint {finetuned_checkpoint}
-# "
-
-# # Record end time and calculate duration
-# END_TIME=$(date +%s)
-# DURATION=$((END_TIME - START_TIME))
-# MINUTES=$((DURATION / 60))
-# SECONDS=$((DURATION % 60))
-# TIME_PER_IMAGE=$(echo "scale=3; $DURATION / $NUM_IMAGES" | bc)
-# THROUGHPUT=$(echo "scale=2; $NUM_IMAGES / $DURATION * 60" | bc)
-# SEG_STATUS=$?  # ← Capture torchrun's exit status
-
-# echo ""
-# echo "============================================================"
-# echo "JOB COMPLETED: $(date)"
-# echo "============================================================"
-# echo "Total time: ${{MINUTES}}m ${{SECONDS}}s (${{DURATION}}s)"
-# echo "Images processed: $NUM_IMAGES"
-# echo "Time per image: ${{TIME_PER_IMAGE}}s"
-# echo "Throughput: ${{THROUGHPUT}} images/minute"
-# echo "Results saved to: {output_dir}"
-# echo "Exit status: $SEG_STATUS"
-# exit $SEG_STATUS
-# echo "============================================================"
-# """        
-# # #SBATCH -q {qos}
-# # #SBATCH -A als
-# # #SBATCH -C gpu
-# # #SBATCH --job-name=seg_{Path(recon_folder_path).name}
-# # #SBATCH --output={pscratch_path}/tomo_seg_logs/%x_%j.out
-# # #SBATCH --error={pscratch_path}/tomo_seg_logs/%x_%j.err
-# # #SBATCH -N {num_nodes}
-# # #SBATCH --ntasks-per-node=4
-# # #SBATCH --gpus-per-node=4
-# # #SBATCH --cpus-per-task=8
-# # #SBATCH --time={walltime}
-
-# # set -e
-
-# # TIMING_FILE="{pscratch_path}/tomo_seg_logs/timing_$SLURM_JOB_ID.txt"
-# # echo "JOB_START=$(date +%s)" > $TIMING_FILE
-
-# # # Load PyTorch module (NERSC recommended)
-# # module load pytorch
-
-# # # Install additional dependencies
-# # pip install --user --quiet \\
-# #     einops decord pycocotools psutil \\
-# #     "timm>=1.0.17" "numpy>=1.26,<2" \\
-# #     tqdm ftfy==6.1.1 regex \\
-# #     iopath>=0.1.10 python-dotenv qlty \\
-# #     git+https://github.com/facebookresearch/sam3.git 2>/dev/null || true
-
-# # mkdir -p {output_dir}
-# # mkdir -p {pscratch_path}/tomo_seg_logs
-
-# # # Environment
-# # export PYTHONPATH={seg_scripts_dir}:$PYTHONPATH
-# # export HF_HOME={hf_cache_dir}
-# # export HF_HUB_CACHE={hf_cache_dir}
-
-# # # Distributed settings
-# # export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
-# # export MASTER_PORT=29500
-
-# # echo "==============================================
-# # Job Configuration
-# # ==============================================
-# # Job ID:       $SLURM_JOB_ID
-# # Nodes:        {num_nodes}
-# # GPUs/node:    4
-# # Total GPUs:   $(({num_nodes} * 4))
-# # Master:       $MASTER_ADDR:$MASTER_PORT
-# # Node list:    $SLURM_JOB_NODELIST
-# # Input:        {input_dir}
-# # Output:       {output_dir}
-# # =============================================="
-
-# # NUM_FILES=$(ls -1 {input_dir}/*.tif {input_dir}/*.tiff 2>/dev/null | wc -l)
-# # echo "Found $NUM_FILES TIFF files to process"
-
-# # echo "SEG_START=$(date +%s)" >> $TIMING_FILE
-
-# # cd {seg_scripts_dir}
-
-# # # NERSC recommended: srun with one task per GPU
-# # # Each task gets SLURM_PROCID (global rank) and SLURM_LOCALID (local rank)
-# # srun --export=ALL \\
-# #     python -u -m src.inference_v2_optimized3 \\
-# #     --input-dir {input_dir} \\
-# #     --output-dir {output_dir} \\
-# #     --bpe-path {checkpoints_dir}/bpe_simple_vocab_16e6.txt.gz \\
-# #     --finetuned-checkpoint {checkpoints_dir}/checkpoint.pt \\
-# #     --original-checkpoint {checkpoints_dir}/sam3.pt \\
-# #     --patch-size 640 \\
-# #     --batch-size {batch_size} \\
-# #     --confidence 0.5 \\
-# #     --prompts {prompts_str}
-
-# # SEG_STATUS=$?
-# # echo "SEG_END=$(date +%s)" >> $TIMING_FILE
-
-# # if [ $SEG_STATUS -ne 0 ]; then
-# #     echo "Segmentation failed with exit code $SEG_STATUS"
-# #     echo "JOB_STATUS=FAILED" >> $TIMING_FILE
-# #     exit 1
-# # fi
-
-# # chmod -R 2775 {output_dir} 2>/dev/null || true
-
-# # echo "JOB_STATUS=SUCCESS" >> $TIMING_FILE
-# # echo "JOB_END=$(date +%s)" >> $TIMING_FILE
-# # """
-#         try:
-#             logger.info("Submitting segmentation job to Perlmutter.")
-#             perlmutter = self.client.compute(Machine.perlmutter)
-            
-#             # Ensure directories exist
-#             logger.info("Creating necessary directories...")
-#             perlmutter.run(f"mkdir -p {pscratch_path}/tomo_seg_logs")
-#             perlmutter.run(f"mkdir -p {cfs_path}/envs")
-            
-#             # Submit job
-#             job = perlmutter.submit_job(job_script)
-#             logger.info(f"Submitted job ID: {job.jobid}")
-            
-#             # Initial update
-#             try:
-#                 job.update()
-#             except Exception as update_err:
-#                 logger.warning(f"Initial job update failed, continuing: {update_err}")
-            
-#             # Wait briefly before polling
-#             time.sleep(60)
-#             logger.info(f"Job {job.jobid} current state: {job.state}")
-            
-#             # Wait for completion
-#             job.complete()
-#             logger.info("Segmentation job completed successfully.")
-            
-#             # Fetch timing data
-#             timing = self._fetch_seg_timing_data(perlmutter, pscratch_path, job.jobid)
-            
-#             if timing:
-#                 logger.info("=" * 60)
-#                 logger.info("SEGMENTATION TIMING BREAKDOWN")
-#                 logger.info("=" * 60)
-#                 logger.info(f"  Total job time:      {timing.get('total', 'N/A')}s")
-                
-#                 if 'env_setup' in timing:
-#                     logger.info(f"  Environment setup:   {timing['env_setup']}s")
-                
-#                 logger.info(f"  SEGMENTATION:        {timing.get('segmentation', 'N/A')}s  <-- inference time")
-#                 logger.info(f"  Job status:          {timing.get('job_status', 'UNKNOWN')}")
-#                 logger.info("=" * 60)
-            
-#             return {
-#                 "success": True,
-#                 "job_id": job.jobid,
-#                 "timing": timing,
-#                 "output_dir": output_dir
-#             }
-            
-#         except Exception as e:
-#             logger.error(f"Error during segmentation job: {e}")
-#             import traceback
-#             logger.error(traceback.format_exc())
-            
-#             # Attempt recovery
-#             match = re.search(r"Job not found:\s*(\d+)", str(e))
-#             if match:
-#                 jobid = match.group(1)
-#                 logger.info(f"Attempting to recover job {jobid}.")
-#                 try:
-#                     job = self.client.compute(Machine.perlmutter).job(jobid=jobid)
-#                     time.sleep(30)
-#                     job.complete()
-#                     logger.info("Segmentation job completed after recovery.")
-                    
-#                     timing = self._fetch_seg_timing_data(perlmutter, pscratch_path, jobid)
-#                     return {
-#                         "success": True,
-#                         "job_id": jobid,
-#                         "timing": timing,
-#                         "output_dir": output_dir
-#                     }
-#                 except Exception as recovery_err:
-#                     logger.error(f"Failed to recover job {jobid}: {recovery_err}")
-            
-#             return {
-#                 "success": False,
-#                 "job_id": None,
-#                 "timing": None,
-#                 "output_dir": None
-#             }
-
-
-#     def _fetch_seg_timing_data(self, perlmutter, pscratch_path: str, job_id: str) -> dict:
-#         """
-#         Fetch and parse timing data from the segmentation job.
-        
-#         :param perlmutter: SFAPI compute object for Perlmutter
-#         :param pscratch_path: Path to the user's pscratch directory
-#         :param job_id: SLURM job ID
-#         :return: Dictionary with timing breakdown
-#         """
-#         timing_file = f"{pscratch_path}/tomo_seg_logs/timing_{job_id}.txt"
-        
-#         try:
-#             # Use SFAPI to read the timing file
-#             result = perlmutter.run(f"cat {timing_file}")
-            
-#             # Handle different result types
-#             if isinstance(result, str):
-#                 output = result
-#             elif hasattr(result, 'output'):
-#                 output = result.output
-#             elif hasattr(result, 'stdout'):
-#                 output = result.stdout
-#             else:
-#                 output = str(result)
-            
-#             logger.info(f"Timing file contents:\n{output}")
-            
-#             # Parse timing data
-#             timing = {}
-#             for line in output.strip().split('\n'):
-#                 if '=' in line:
-#                     key, value = line.split('=', 1)
-#                     timing[key] = value.strip()
-            
-#             # Calculate durations
-#             breakdown = {}
-            
-#             if 'JOB_START' in timing and 'JOB_END' in timing:
-#                 breakdown['total'] = int(timing['JOB_END']) - int(timing['JOB_START'])
-            
-#             if 'ENV_SETUP_START' in timing and 'ENV_SETUP_END' in timing:
-#                 breakdown['env_setup'] = int(timing['ENV_SETUP_END']) - int(timing['ENV_SETUP_START'])
-            
-#             if 'SEG_START' in timing and 'SEG_END' in timing:
-#                 breakdown['segmentation'] = int(timing['SEG_END']) - int(timing['SEG_START'])
-            
-#             breakdown['job_status'] = timing.get('JOB_STATUS', 'UNKNOWN')
-            
-#             return breakdown
-            
-#         except Exception as e:
-#             logger.warning(f"Error fetching timing data: {e}")
-#             import traceback
-#             logger.warning(traceback.format_exc())
-#             return None
 
     def segmentation(
         self,
@@ -1006,50 +644,26 @@ date
 #SBATCH --output={pscratch_path}/tomo_seg_logs/%x_%j.out
 #SBATCH --error={pscratch_path}/tomo_seg_logs/%x_%j.err
 
-# Create output and log directories
-mkdir -p {output_dir}
-mkdir -p {pscratch_path}/tomo_seg_logs
-
-# Load conda module
-module load conda
-
-# Check if environment exists, create if it doesn't
-if [ ! -d "{conda_env_path}" ]; then
-    echo "Conda environment not found at {conda_env_path}"
-    echo "Creating new environment..."
-    
-    # Check if Xiaoya's environment exists as a reference
-    if [ -d "/pscratch/sd/x/xchong/envs/sam3" ]; then
-        echo "Cloning from Xiaoya's environment..."
-        conda create --prefix {conda_env_path} --clone /pscratch/sd/x/xchong/envs/sam3 -y
-    else
-        echo "Creating fresh environment..."
-        conda create --prefix {conda_env_path} python=3.10 -y
-        conda activate {conda_env_path}
-        
-        # Install dependencies
-        pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
-        pip install einops decord pycocotools psutil
-        pip install "timm>=1.0.17" "numpy>=1.26,<2"
-        pip install tqdm ftfy==6.1.1 regex
-        pip install iopath>=0.1.10 python-dotenv qlty
-        pip install transformers
-        pip install git+https://github.com/facebookresearch/sam3.git
-        
-        conda deactivate
-    fi
-    
-    echo "Environment setup complete"
-else
-    echo "Using existing conda environment at {conda_env_path}"
-fi
-
-# Activate the environment
-conda activate {conda_env_path}
-
 # Get master node
 export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
 export MASTER_PORT=29500
+
+# Set HuggingFace cache to pre-downloaded model files (avoid gated repo auth)
+export HF_HOME="{cfs_path}/tomography_segmentation_scripts/.cache/huggingface"
+export HF_HUB_CACHE="{cfs_path}/tomography_segmentation_scripts/.cache/huggingface"
+
+# Set parameters
+export INPUT_DIR="{input_dir}"
+export OUTPUT_DIR="{output_dir}"
+export BATCH_SIZE={batch_size}
+
+# Create output and log directories
+mkdir -p ${{OUTPUT_DIR}}
+mkdir -p {pscratch_path}/tomo_seg_logs
+
+# Load conda module and activate environment
+module load conda
+conda activate {conda_env_path}
 
 echo "============================================================"
 echo "JOB STARTED: $(date)"
@@ -1058,12 +672,12 @@ echo "Master: $MASTER_ADDR:$MASTER_PORT"
 echo "Nodes: $SLURM_JOB_NODELIST"
 echo "Job ID: $SLURM_JOB_ID"
 echo "GPUs: $((SLURM_NNODES * 4))"
-echo "Input: {input_dir}"
-echo "Output: {output_dir}"
+echo "Input: ${{INPUT_DIR}}"
+echo "Output: ${{OUTPUT_DIR}}"
 
 # Count actual images
-NUM_IMAGES=$(ls {input_dir}/*.tif* 2>/dev/null | wc -l)
-echo "Images to process: $NUM_IMAGES"
+NUM_IMAGES=$(ls ${{INPUT_DIR}}/*.tif* 2>/dev/null | wc -l)
+echo "Images to process: ${{NUM_IMAGES}}"
 echo "============================================================"
 
 # Record start time
@@ -1073,24 +687,31 @@ START_TIME=$(date +%s)
 cd {seg_scripts_dir}
 
 # Run inference with v4
-srun --ntasks-per-node=1 --gpus-per-task=4 bash -c "
-torchrun \\
-    --nnodes=\$SLURM_NNODES \\
-    --nproc_per_node={nproc_per_node} \\
-    --rdzv_id=\$SLURM_JOB_ID \\
-    --rdzv_backend=c10d \\
-    --rdzv_endpoint=\$MASTER_ADDR:\$MASTER_PORT \\
-    src/inference_v4.py \\
-    --input-dir {input_dir} \\
-    --output-dir {output_dir} \\
-    --patch-size 640 \\
-    --batch-size {batch_size} \\
-    --confidence 0.5 \\
-    --prompts {prompts_str} \\
-    --bpe-path {bpe_path} \\
-    --original-checkpoint {original_checkpoint} \\
-    --finetuned-checkpoint {finetuned_checkpoint}
-"
+
+export TORCH_DISTRIBUTED_DEBUG=DETAIL
+export NCCL_DEBUG=INFO
+export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
+export BPE_PATH="{bpe_path}"
+export ORIG_CKPT="{original_checkpoint}"
+export FT_CKPT="{finetuned_checkpoint}"
+
+srun --ntasks-per-node=1 --gpus-per-task=4 \
+  torchrun \
+    --nnodes=$SLURM_NNODES \
+    --nproc_per_node=4 \
+    --rdzv_id=$SLURM_JOB_ID \
+    --rdzv_backend=c10d \
+    --rdzv_endpoint=$MASTER_ADDR:$MASTER_PORT \
+    src/inference_v4.py \
+    --input-dir "${{INPUT_DIR}}" \
+    --output-dir "${{OUTPUT_DIR}}" \
+    --patch-size 640 \
+    --batch-size "${{BATCH_SIZE}}" \
+    --confidence 0.5 \
+    --prompts 'Cortex' 'Phloem Fibers' 'Air-based Pith cells' 'Water-based Pith cells' 'Xylem vessels' \
+    --bpe-path "${{BPE_PATH}}" \
+    --original-checkpoint "${{ORIG_CKPT}}" \
+    --finetuned-checkpoint "${{FT_CKPT}}"
 
 SEG_STATUS=$?
 
@@ -1116,12 +737,12 @@ echo "Total time: ${{MINUTES}}m ${{SECONDS}}s (${{DURATION}}s)"
 echo "Images processed: $NUM_IMAGES"
 echo "Time per image: ${{TIME_PER_IMAGE}}s"
 echo "Throughput: ${{THROUGHPUT}} images/minute"
-echo "Results saved to: {output_dir}"
+echo "Results saved to: ${{OUTPUT_DIR}}"
 echo "Exit status: $SEG_STATUS"
 echo "============================================================"
 
 # Set permissions
-chmod -R 2775 {output_dir} 2>/dev/null || true
+chmod -R 2775 ${{OUTPUT_DIR}} 2>/dev/null || true
 
 exit $SEG_STATUS
 """
@@ -1769,6 +1390,235 @@ def nersc_recon_multinode_flow(
         return False
 
 
+@flow(name="nersc_forge_recon_segment_flow", flow_run_name="nersc_recon_seg-{file_path}")
+def nersc_forge_recon_segment_flow(
+    file_path: str,
+    config: Optional[Config832] = None,
+) -> bool:
+    """
+    Process and transfer a file from bl832 to NERSC and run reconstruction and segmentation.
+
+    :param file_path: The path to the file to be processed.
+    :param config: Configuration object for the flow.
+    :return: True if the flow completed successfully, False otherwise.
+    """
+    logger = get_run_logger()
+
+    # STEP 1: Setup Configuration
+    if config is None:
+        logger.info("Initializing Config")
+        config = Config832()
+
+    # Paths
+    path = Path(file_path)
+    folder_name = path.parent.name
+    file_name = path.stem
+    scratch_path_tiff = f"{folder_name}/rec{file_name}"
+    scratch_path_segment = f"{folder_name}/seg{file_name}"
+
+    logger.info(f"Starting NERSC reconstruction + segmentation flow for {file_path=}")
+    logger.info(f"Reconstructed TIFFs will be at: {scratch_path_tiff}")
+    logger.info(f"Segmented output will be at: {scratch_path_segment}")
+
+    transfer_controller = get_transfer_controller(
+        transfer_type=CopyMethod.GLOBUS,
+        config=config
+    )
+
+    controller = get_controller(
+        hpc_type=HPC.NERSC,
+        config=config
+    )
+    logger.info("NERSC reconstruction controller initialized")
+
+    if num_nodes is None:
+        num_nodes = config.nersc_recon_num_nodes
+    logger.info(f"Configured to use {num_nodes} nodes for reconstruction")
+
+    # Track success for pruning decisions
+    nersc_reconstruction_success = False
+    nersc_segmentation_success = False
+    data832_tiff_transfer_success = False
+    data832_segment_transfer_success = False
+
+    # STEP 2: Run Multinode Reconstruction at NERSC
+    logger.info(f"Using multi-node reconstruction with {num_nodes} nodes")
+    recon_result = controller.reconstruct_multinode(
+        file_path=file_path,
+        num_nodes=num_nodes
+    )
+
+    if isinstance(recon_result, dict):
+        nersc_reconstruction_success = recon_result.get('success', False)
+        timing = recon_result.get('timing')
+
+        if timing:
+            logger.info("=" * 50)
+            logger.info("TIMING BREAKDOWN")
+            logger.info("=" * 50)
+            logger.info(f"  Total job time:      {timing.get('total', 'N/A')}s")
+            logger.info(f"  Container pull:      {timing.get('container_pull', 'N/A')}s")
+            logger.info(
+                f"  File copy:           {timing.get('file_copy', 'N/A')}s "
+                f"(skipped: {timing.get('copy_skipped', 'N/A')})"
+            )
+            logger.info(f"  Metadata detection:  {timing.get('metadata', 'N/A')}s")
+            logger.info(f"  RECONSTRUCTION:      {timing.get('reconstruction', 'N/A')}s  <-- actual recon time")
+            logger.info(f"  Num slices:          {timing.get('num_slices', 'N/A')}")
+            logger.info("=" * 50)
+
+            # Calculate overhead
+            if all(k in timing for k in ['total', 'reconstruction']):
+                overhead = timing['total'] - timing['reconstruction']
+                logger.info(f"  Overhead:            {overhead}s")
+                logger.info(f"  Reconstruction %:    {100 * timing['reconstruction'] / timing['total']:.1f}%")
+            logger.info("=" * 50)
+    else:
+        nersc_reconstruction_success = recon_result
+
+    logger.info(f"NERSC reconstruction success: {nersc_reconstruction_success}")
+
+    if not nersc_reconstruction_success:
+        logger.error("Reconstruction Failed.")
+        raise ValueError("Reconstruction at NERSC Failed")
+    else:
+        logger.info("Reconstruction Successful.")
+
+        # STEP 3: Send reconstructed data (tiff) to data832
+        logger.info(f"Transferring reconstructed TIFFs from NERSC pscratch to data832")
+        try:
+            data832_tiff_transfer_success = transfer_controller.copy(
+                file_path=scratch_path_tiff,
+                source=config.nersc832_alsdev_pscratch_scratch,
+                destination=config.data832_scratch
+            )
+            logger.info(f"Transfer reconstructed TIFF data to data832 success: {data832_tiff_transfer_success}")
+        except Exception as e:
+            logger.error(f"Failed to transfer TIFFs to data832: {e}")
+            data832_tiff_transfer_success = False
+
+        # STEP 4: Run the Segmentation Task at NERSC
+        logger.info(f"Starting NERSC segmentation task for {scratch_path_tiff=}")
+        seg_result = nersc_segmentation_task(
+            recon_folder_path=scratch_path_tiff,
+            config=config
+        )
+        if isinstance(seg_result, dict):
+            nersc_segmentation_success = seg_result.get('success', False)
+            timing = seg_result.get('timing')
+
+            if timing:
+                logger.info("=" * 50)
+                logger.info("SEGMENTATION TIMING BREAKDOWN")
+                logger.info("=" * 50)
+                logger.info(f"  Total time:          {timing.get('total_time', 'N/A')}")
+                logger.info(f"  Images processed:    {timing.get('num_images', 'N/A')}")
+                logger.info(f"  Time per image:      {timing.get('time_per_image', 'N/A')}")
+                logger.info(f"  Throughput:          {timing.get('throughput', 'N/A')} images/min")
+                logger.info(f"  Exit status:         {timing.get('exit_status', 'N/A')}")
+                logger.info("=" * 50)
+        else:
+            nersc_segmentation_success = bool(seg_result)
+
+        if not nersc_segmentation_success:
+            logger.warning("Segmentation at NERSC Failed")
+        else:
+            logger.info("Segmentation at NERSC Successful")
+
+            # STEP 5: Transfer segmented data to data832
+            logger.info(f"Transferring segmented data from NERSC pscratch to data832")
+            try:
+                data832_segment_transfer_success = transfer_controller.copy(
+                    file_path=scratch_path_segment,
+                    source=config.nersc832_alsdev_pscratch_scratch,
+                    destination=config.data832_scratch
+                )
+                logger.info(f"Transfer segmented data to data832 success: {data832_segment_transfer_success}")
+            except Exception as e:
+                logger.error(f"Failed to transfer segmented data to data832: {e}")
+                data832_segment_transfer_success = False
+
+    # STEP 6: Schedule Pruning of files
+    logger.info("Scheduling file pruning tasks.")
+    prune_controller = get_prune_controller(
+        prune_type=PruneMethod.GLOBUS,
+        config=config
+    )
+
+    # Prune raw from NERSC pscratch
+    logger.info("Scheduling pruning of NERSC pscratch raw data.")
+    try:
+        prune_controller.prune(
+            file_path=f"{folder_name}/{path.name}",
+            source_endpoint=config.nersc832_alsdev_pscratch_raw,
+            check_endpoint=None,
+            days_from_now=1.0
+        )
+    except Exception as e:
+        logger.warning(f"Failed to schedule raw data pruning: {e}")
+
+    # Prune TIFFs from NERSC pscratch/scratch
+    if nersc_reconstruction_success:
+        logger.info("Scheduling pruning of NERSC pscratch reconstruction data.")
+        try:
+            prune_controller.prune(
+                file_path=scratch_path_tiff,
+                source_endpoint=config.nersc832_alsdev_pscratch_scratch,
+                check_endpoint=config.data832_scratch if data832_tiff_transfer_success else None,
+                days_from_now=1.0
+            )
+        except Exception as e:
+            logger.warning(f"Failed to schedule reconstruction data pruning: {e}")
+
+    # Prune segmented data from NERSC pscratch/scratch
+    if nersc_segmentation_success:
+        logger.info("Scheduling pruning of NERSC pscratch segmentation data.")
+        try:
+            prune_controller.prune(
+                file_path=scratch_path_segment,
+                source_endpoint=config.nersc832_alsdev_pscratch_scratch,
+                check_endpoint=config.data832_scratch if data832_segment_transfer_success else None,
+                days_from_now=1.0
+            )
+        except Exception as e:
+            logger.warning(f"Failed to schedule segmentation data pruning: {e}")
+
+    # Prune reconstructed TIFFs from data832 scratch (longer retention)
+    if data832_tiff_transfer_success:
+        logger.info("Scheduling pruning of data832 scratch reconstruction TIFF data.")
+        try:
+            prune_controller.prune(
+                file_path=scratch_path_tiff,
+                source_endpoint=config.data832_scratch,
+                check_endpoint=None,
+                days_from_now=30.0
+            )
+        except Exception as e:
+            logger.warning(f"Failed to schedule data832 tiff pruning: {e}")
+
+    # Prune segmented data from data832 scratch (longer retention)
+    if data832_segment_transfer_success:
+        logger.info("Scheduling pruning of data832 scratch segmentation data.")
+        try:
+            prune_controller.prune(
+                file_path=scratch_path_segment,
+                source_endpoint=config.data832_scratch,
+                check_endpoint=None,
+                days_from_now=30.0
+            )
+        except Exception as e:
+            logger.warning(f"Failed to schedule data832 segment pruning: {e}")
+
+    # TODO: ingest to scicat
+
+    if nersc_reconstruction_success and nersc_segmentation_success:
+        logger.info("NERSC reconstruction + segmentation flow completed successfully.")
+        return True
+    else:
+        logger.warning(f"Flow completed with issues: recon={nersc_reconstruction_success}, seg={nersc_segmentation_success}")
+        return False
+
+
 @flow(name="nersc_streaming_flow", on_cancellation=[cancellation_hook])
 def nersc_streaming_flow(
     walltime: datetime.timedelta = datetime.timedelta(minutes=5),
@@ -1873,7 +1723,7 @@ def nersc_segmentation_integration_test() -> bool:
     """
     logger = get_run_logger()
     logger.info("Starting NERSC segmentation integration test.")
-    recon_folder_path = 'synaps-i/rec20211222_125057_petiole4'  # 'test'  #
+    recon_folder_path = 'synaps-i/rec_test'  # rec20211222_125057_petiole4'  # 'test'  #
     flow_success = nersc_segmentation_task(
         recon_folder_path=recon_folder_path,
         config=Config832()
@@ -1885,16 +1735,16 @@ def nersc_segmentation_integration_test() -> bool:
 if __name__ == "__main__":
     # Run the integration test flow
 
-    # from sfapi_client import Client
-    # from sfapi_client.compute import Machine
+    from sfapi_client import Client
+    from sfapi_client.compute import Machine
 
-    # # Use your existing client setup
-    # client = NERSCTomographyHPCController.create_sfapi_client()
-    # perlmutter = client.compute(Machine.perlmutter)
+    # Use your existing client setup
+    client = NERSCTomographyHPCController.create_sfapi_client()
+    perlmutter = client.compute(Machine.perlmutter)
 
-    # job.cancel()
-    # job = perlmutter.job(jobid=48570063)
-    # print(f"Job {job.jobid} cancelled, state: {job.state}")
+    job = perlmutter.job(jobid=48691530)
+    job.cancel()
+    print(f"Job {job.jobid} cancelled, state: {job.state}")
 
     result = nersc_segmentation_integration_test()
     print(f"Integration test result: {result}")
