@@ -651,9 +651,6 @@ export MASTER_PORT=29500
 module load conda
 conda activate {conda_env_path}
 
-# ---------------------------
-# Hugging Face: cache bootstrap + token
-# ---------------------------
 HF_HOME_ROOT="{cfs_path}/.cache/huggingface"
 mkdir -p "${{HF_HOME_ROOT}}/hub" "${{HF_HOME_ROOT}}/datasets"
 
@@ -670,14 +667,6 @@ echo "[RANK=$SLURM_PROCID] HF_HUB_CACHE=$HF_HUB_CACHE"
 chmod -R 2775 "{cfs_path}/tomography_segmentation_scripts/.cache" 2>/dev/null || true
 chmod -R 2775 "${{HF_HOME_ROOT}}" 2>/dev/null || true
 
-# # Set HuggingFace cache to pre-downloaded model files (avoid gated repo auth)
-# export HF_HOME="{cfs_path}/tomography_segmentation_scripts/.cache/huggingface"
-# export HF_HUB_CACHE="$HF_HOME/hub"
-
-# export HF_HUB_OFFLINE=1
-# export TRANSFORMERS_OFFLINE=1
-# export HF_DATASETS_OFFLINE=1
-
 # Set parameters
 export INPUT_DIR="{input_dir}"
 export OUTPUT_DIR="{output_dir}"
@@ -686,7 +675,6 @@ export BATCH_SIZE={batch_size}
 # Create output and log directories
 mkdir -p ${{OUTPUT_DIR}}
 mkdir -p {pscratch_path}/tomo_seg_logs
-
 
 echo "============================================================"
 echo "JOB STARTED: $(date)"
@@ -1416,6 +1404,7 @@ def nersc_recon_multinode_flow(
 def nersc_forge_recon_segment_flow(
     file_path: str,
     config: Optional[Config832] = None,
+    num_nodes: Optional[int] = None,
 ) -> bool:
     """
     Process and transfer a file from bl832 to NERSC and run reconstruction and segmentation.
@@ -1454,7 +1443,7 @@ def nersc_forge_recon_segment_flow(
     logger.info("NERSC reconstruction controller initialized")
 
     if num_nodes is None:
-        num_nodes = config.nersc_recon_num_nodes
+        num_nodes = config.nersc_segment_num_nodes
     logger.info(f"Configured to use {num_nodes} nodes for reconstruction")
 
     # Track success for pruning decisions

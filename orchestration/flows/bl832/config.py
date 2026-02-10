@@ -29,3 +29,4 @@ class Config832(BeamlineConfig):
         self.scicat = self.config["scicat"]
         self.ghcr_images832 = self.config["ghcr_images832"]
         self.nersc_recon_num_nodes = 4
+        self.nersc_segment_num_nodes = 4
