@@ -597,7 +597,7 @@ date
         user = self.client.user()
         pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
         cfs_path = "/global/cfs/cdirs/als/data_mover/8.3.2"
-        conda_env_path = f"{cfs_path}/envs/sam3"
+        conda_env_path = f"{cfs_path}/envs/sam3-py311"
         
         # Paths
         seg_scripts_dir = f"{cfs_path}/tomography_segmentation_scripts/inference_v4/forge_feb_seg_model_demo/"
@@ -628,7 +628,6 @@ date
             qos = "regular"
         
         walltime = "00:59:00"
-
         job_name = f"seg_{Path(recon_folder_path).name}"
 
         job_script = f"""#!/bin/bash
@@ -648,9 +647,36 @@ date
 export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
 export MASTER_PORT=29500
 
-# Set HuggingFace cache to pre-downloaded model files (avoid gated repo auth)
-export HF_HOME="{cfs_path}/tomography_segmentation_scripts/.cache/huggingface"
-export HF_HUB_CACHE="{cfs_path}/tomography_segmentation_scripts/.cache/huggingface"
+# Load conda module and activate environment
+module load conda
+conda activate {conda_env_path}
+
+# ---------------------------
+# Hugging Face: cache bootstrap + token
+# ---------------------------
+HF_HOME_ROOT="{cfs_path}/.cache/huggingface"
+mkdir -p "${{HF_HOME_ROOT}}/hub" "${{HF_HOME_ROOT}}/datasets"
+
+export HF_HOME="${{HF_HOME_ROOT}}"
+export HF_HUB_CACHE="${{HF_HOME_ROOT}}/hub"
+export TRANSFORMERS_CACHE="${{HF_HUB_CACHE}}"
+export HF_DATASETS_CACHE="${{HF_HOME_ROOT}}/datasets"
+
+# prove what each rank sees
+echo "[RANK=$SLURM_PROCID] HF_HOME=$HF_HOME"
+echo "[RANK=$SLURM_PROCID] HF_HUB_CACHE=$HF_HUB_CACHE"
+
+# Best-effort perms (ignore if not allowed)
+chmod -R 2775 "{cfs_path}/tomography_segmentation_scripts/.cache" 2>/dev/null || true
+chmod -R 2775 "${{HF_HOME_ROOT}}" 2>/dev/null || true
+
+# # Set HuggingFace cache to pre-downloaded model files (avoid gated repo auth)
+# export HF_HOME="{cfs_path}/tomography_segmentation_scripts/.cache/huggingface"
+# export HF_HUB_CACHE="$HF_HOME/hub"
+
+# export HF_HUB_OFFLINE=1
+# export TRANSFORMERS_OFFLINE=1
+# export HF_DATASETS_OFFLINE=1
 
 # Set parameters
 export INPUT_DIR="{input_dir}"
@@ -661,9 +687,6 @@ export BATCH_SIZE={batch_size}
 mkdir -p ${{OUTPUT_DIR}}
 mkdir -p {pscratch_path}/tomo_seg_logs
 
-# Load conda module and activate environment
-module load conda
-conda activate {conda_env_path}
 
 echo "============================================================"
 echo "JOB STARTED: $(date)"
@@ -687,7 +710,6 @@ START_TIME=$(date +%s)
 cd {seg_scripts_dir}
 
 # Run inference with v4
-
 export TORCH_DISTRIBUTED_DEBUG=DETAIL
 export NCCL_DEBUG=INFO
 export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
@@ -697,12 +719,12 @@ export FT_CKPT="{finetuned_checkpoint}"
 
 srun --ntasks-per-node=1 --gpus-per-task=4 \
   torchrun \
-    --nnodes=$SLURM_NNODES \
+    --nnodes={num_nodes} \
     --nproc_per_node=4 \
     --rdzv_id=$SLURM_JOB_ID \
     --rdzv_backend=c10d \
     --rdzv_endpoint=$MASTER_ADDR:$MASTER_PORT \
-    src/inference_v4.py \
+    src/inference_v4_logs.py \
     --input-dir "${{INPUT_DIR}}" \
     --output-dir "${{OUTPUT_DIR}}" \
     --patch-size 640 \
@@ -1723,7 +1745,7 @@ def nersc_segmentation_integration_test() -> bool:
     """
     logger = get_run_logger()
     logger.info("Starting NERSC segmentation integration test.")
-    recon_folder_path = 'synaps-i/rec_test'  # rec20211222_125057_petiole4'  # 'test'  #
+    recon_folder_path = 'synaps-i/rec20211222_125057_petiole4'  # 'test'  #
     flow_success = nersc_segmentation_task(
         recon_folder_path=recon_folder_path,
         config=Config832()
@@ -1735,16 +1757,16 @@ def nersc_segmentation_integration_test() -> bool:
 if __name__ == "__main__":
     # Run the integration test flow
 
-    from sfapi_client import Client
-    from sfapi_client.compute import Machine
+    # from sfapi_client import Client
+    # from sfapi_client.compute import Machine
 
-    # Use your existing client setup
-    client = NERSCTomographyHPCController.create_sfapi_client()
-    perlmutter = client.compute(Machine.perlmutter)
+    # # Use your existing client setup
+    # client = NERSCTomographyHPCController.create_sfapi_client()
+    # perlmutter = client.compute(Machine.perlmutter)
 
-    job = perlmutter.job(jobid=48691530)
-    job.cancel()
-    print(f"Job {job.jobid} cancelled, state: {job.state}")
+    # job = perlmutter.job(jobid=48700180)
+    # job.cancel()
+    # print(f"Job {job.jobid} cancelled, state: {job.state}")
 
     result = nersc_segmentation_integration_test()
     print(f"Integration test result: {result}")
