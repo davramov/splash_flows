@@ -337,8 +337,11 @@ class ALCFTomographyHPCController(TomographyHPCController):
             _sync=True
         )
 
-        segmentation_module = "src.inference_v2_optimized2"
-        workdir = f"{self.allocation_root}/segmentation/scripts/forge_feb_seg_model_demo_v2/forge_feb_seg_model_demo"
+        # segmentation_module = "src.inference_v2_optimized2"
+        # workdir = f"{self.allocation_root}/segmentation/scripts/forge_feb_seg_model_demo_v2/forge_feb_seg_model_demo"
+
+        segmentation_module = "src.inference_v4"
+        workdir = f"{self.allocation_root}/segmentation/scripts/inference_v4/forge_feb_seg_model_demo"
 
         with Executor(endpoint_id=endpoint_id, client=gcc) as fxe:
             logger.info(f"Running segmentation on {recon_folder_path} at ALCF")
@@ -353,14 +356,161 @@ class ALCFTomographyHPCController(TomographyHPCController):
 
         return result
 
+    # @staticmethod
+    # def _segmentation_wrapper(
+    #     input_dir: str = "/eagle/SYNAPS-I/data/bl832/scratch/reconstruction/",
+    #     output_dir: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/",
+    #     script_module: str = "src.inference_v2_optimized2",
+    #     workdir: str = "/eagle/SYNAPS-I/segmentation/scripts/forge_feb_seg_model_demo_v2/forge_feb_seg_model_demo",
+    #     nproc_per_node: int = 4,
+    #     patch_size: int = 640,
+    #     batch_size: int = 8,
+    #     confidence: float = 0.5,
+    #     prompts: list[str] = ["Cortex", "Phloem Fibers", "Air-based Pith cells", "Water-based Pith cells", "Xylem vessels"],
+    #     bpe_path: str = "/eagle/SYNAPS-I/segmentation/sam3_finetune/sam3/bpe_simple_vocab_16e6.txt.gz",
+    #     finetuned_checkpoint: str = "/eagle/SYNAPS-I/segmentation/sam3_finetune/sam3/checkpoint.pt",
+    #     original_checkpoint: str = "/eagle/SYNAPS-I/segmentation/sam3_finetune/sam3/sam3.pt",
+    #     use_finetuned: bool = True,
+    # ) -> str:
+    #     """
+    #     Wrapper function to run segmentation using torch.distributed.run on ALCF.
+    #     This is the code that is executed by Globus Compute.
+
+    #     :param input_dir: Directory containing input data for segmentation.
+    #     :param output_dir: Directory to save segmentation outputs.
+    #     :param script_module: Python module to run for segmentation.
+    #     :param workdir: Working directory for the segmentation script.
+    #     :param nproc_per_node: Number of processes per node.
+    #     :param patch_size: Size of the patches for segmentation.
+    #     :param batch_size: Batch size for segmentation.
+    #     :param confidence: Confidence threshold for segmentation.
+    #     :param prompts: List of prompts for segmentation.
+    #     :param bpe_path: Path to the BPE vocabulary file.
+    #     :param finetuned_checkpoint: Path to the finetuned model checkpoint.
+    #     :param original_checkpoint: Path to the original model checkpoint.
+    #     :param use_finetuned: Whether to use the finetuned model checkpoint.
+
+    #     :return: Confirmation message upon completion.
+    #     """
+    #     import os
+    #     import subprocess
+    #     import time
+
+    #     seg_start = time.time()
+    #     os.chdir(workdir)
+
+    #     # Get PBS info
+    #     pbs_nodefile = os.environ.get("PBS_NODEFILE")
+    #     pbs_jobid = os.environ.get("PBS_JOBID", "12345")
+
+    #     print("=== PBS DEBUG ===")
+    #     print(f"PBS_NODEFILE: {pbs_nodefile}")
+    #     print(f"PBS_JOBID: {pbs_jobid}")
+
+    #     # Determine number of nodes and master address based on PBS_NODEFILE
+    #     if pbs_nodefile and os.path.exists(pbs_nodefile):
+    #         with open(pbs_nodefile, 'r') as f:
+    #             all_lines = [line.strip() for line in f if line.strip()]
+    #         unique_nodes = list(dict.fromkeys(all_lines))
+    #         actual_nnodes = len(unique_nodes)
+    #         master_addr = unique_nodes[0]
+    #         print(f"PBS_NODEFILE contents: {all_lines}")
+    #         print(f"Unique nodes ({actual_nnodes}): {unique_nodes}")
+    #         print(f"Master: {master_addr}")
+    #     else:
+    #         actual_nnodes = 1
+    #         master_addr = "localhost"
+    #         print("No PBS_NODEFILE, single node mode")
+
+    #     # Use explicit path to torchrun from the virtual environment
+    #     venv_path = "/eagle/SYNAPS-I/segmentation/env"
+
+    #     # Build torchrun arguments
+    #     # rdzv is used for rendezvous in multi-node setups, meaning all nodes can find each other
+    #     torchrun_args = [
+    #         f"--nnodes={actual_nnodes}",
+    #         f"--nproc_per_node={nproc_per_node}",
+    #         f"--rdzv_id={pbs_jobid}",
+    #         "--rdzv_backend=c10d",
+    #         f"--rdzv_endpoint={master_addr}:29500",
+    #         "-m", script_module,
+    #         "--input-dir", input_dir,
+    #         "--output-dir", output_dir,
+    #         "--patch-size", str(patch_size),
+    #         "--batch-size", str(batch_size),
+    #         "--confidence", str(confidence),
+    #         "--prompts",
+    #     ]
+    #     # Add prompts to the arguments, each prompt is a separate argument
+    #     torchrun_args.extend([f'"{p}"' for p in prompts])
+
+    #     torchrun_args.extend(["--bpe-path", bpe_path])
+
+    #     if use_finetuned:
+    #         torchrun_args.extend([
+    #             "--finetuned-checkpoint", finetuned_checkpoint,
+    #             "--original-checkpoint", original_checkpoint,
+    #         ])
+    #     else:
+    #         torchrun_args.extend(["--original-checkpoint", original_checkpoint])
+
+    #     torchrun_cmd = f"{venv_path}/bin/python -m torch.distributed.run " + " ".join(torchrun_args)
+
+    #     # Environment + NCCL setup - activate venv and set PATH explicitly
+    #     # Following best practices from ALCF:
+    #     # https://docs.alcf.anl.gov/polaris/data-science/frameworks/pytorch/#multi-gpu-multi-node-scale-up
+    #     env_setup = (
+    #         f"source {venv_path}/bin/activate && "
+    #         f"export PATH={venv_path}/bin:$PATH && "
+    #         "export HF_HUB_CACHE=/eagle/SYNAPS-I/segmentation/.cache/huggingface && "
+    #         "export HF_HOME=$HF_HUB_CACHE && "
+    #         "export CUDA_DEVICE_ORDER=PCI_BUS_ID && "
+    #         "export NCCL_NET_GDR_LEVEL=PHB && "
+    #         "export NCCL_CROSS_NIC=1 && "
+    #         "export NCCL_COLLNET_ENABLE=1 && "
+    #         'export NCCL_NET="AWS Libfabric" && '
+    #         "export LD_LIBRARY_PATH=/soft/libraries/aws-ofi-nccl/v1.9.1-aws/lib:$LD_LIBRARY_PATH && "
+    #         "export LD_LIBRARY_PATH=/soft/libraries/hwloc/lib/:$LD_LIBRARY_PATH && "
+    #         "export FI_CXI_DISABLE_HOST_REGISTER=1 && "
+    #         "export FI_MR_CACHE_MONITOR=userfaultfd && "
+    #         "export FI_CXI_DEFAULT_CQ_SIZE=131072 && "
+    #         f"cd {workdir} && "
+    #     )
+
+    #     if actual_nnodes > 1:
+    #         # Use mpiexec to launch torchrun on all nodes
+    #         command = [
+    #             "mpiexec",
+    #             "-n", str(actual_nnodes),
+    #             "-ppn", "1",
+    #             "-hostfile", pbs_nodefile,
+    #             "--cpu-bind", "depth",
+    #             "-d", "16",
+    #             "bash", "-c", env_setup + torchrun_cmd
+    #         ]
+    #     else:
+    #         command = ["bash", "-c", env_setup + torchrun_cmd]
+
+    #     print(f"Running: {' '.join(command)}")
+
+    #     result = subprocess.run(command, stdout=None, stderr=None, text=True)
+    #     print(f"STDOUT: {result.stdout[-3000:] if result.stdout else 'None'}")
+    #     print(f"STDERR: {result.stderr[-3000:] if result.stderr else 'None'}")
+
+    #     if result.returncode != 0:
+    #         raise RuntimeError(f"Segmentation failed: {result.returncode}\nSTDERR: {result.stderr[-2000:]}")
+
+    #     return f"Completed in {time.time() - seg_start:.1f}s"
+
     @staticmethod
     def _segmentation_wrapper(
         input_dir: str = "/eagle/SYNAPS-I/data/bl832/scratch/reconstruction/",
         output_dir: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/",
-        script_module: str = "src.inference_v2_optimized2",
-        workdir: str = "/eagle/SYNAPS-I/segmentation/scripts/forge_feb_seg_model_demo_v2/forge_feb_seg_model_demo",
+        script_module: str = "src.inference_v4",
+        workdir: str = "/eagle/SYNAPS-I/segmentation/scripts/inference_v4/forge_feb_seg_model_demo",
         nproc_per_node: int = 4,
         patch_size: int = 640,
+        overlap_ratio: float = 0.25,
         batch_size: int = 8,
         confidence: float = 0.5,
         prompts: list[str] = ["Cortex", "Phloem Fibers", "Air-based Pith cells", "Water-based Pith cells", "Xylem vessels"],
@@ -368,26 +518,10 @@ class ALCFTomographyHPCController(TomographyHPCController):
         finetuned_checkpoint: str = "/eagle/SYNAPS-I/segmentation/sam3_finetune/sam3/checkpoint.pt",
         original_checkpoint: str = "/eagle/SYNAPS-I/segmentation/sam3_finetune/sam3/sam3.pt",
         use_finetuned: bool = True,
+        skip_existing: bool = False,
     ) -> str:
         """
         Wrapper function to run segmentation using torch.distributed.run on ALCF.
-        This is the code that is executed by Globus Compute.
-
-        :param input_dir: Directory containing input data for segmentation.
-        :param output_dir: Directory to save segmentation outputs.
-        :param script_module: Python module to run for segmentation.
-        :param workdir: Working directory for the segmentation script.
-        :param nproc_per_node: Number of processes per node.
-        :param patch_size: Size of the patches for segmentation.
-        :param batch_size: Batch size for segmentation.
-        :param confidence: Confidence threshold for segmentation.
-        :param prompts: List of prompts for segmentation.
-        :param bpe_path: Path to the BPE vocabulary file.
-        :param finetuned_checkpoint: Path to the finetuned model checkpoint.
-        :param original_checkpoint: Path to the original model checkpoint.
-        :param use_finetuned: Whether to use the finetuned model checkpoint.
-
-        :return: Confirmation message upon completion.
         """
         import os
         import subprocess
@@ -404,7 +538,6 @@ class ALCFTomographyHPCController(TomographyHPCController):
         print(f"PBS_NODEFILE: {pbs_nodefile}")
         print(f"PBS_JOBID: {pbs_jobid}")
 
-        # Determine number of nodes and master address based on PBS_NODEFILE
         if pbs_nodefile and os.path.exists(pbs_nodefile):
             with open(pbs_nodefile, 'r') as f:
                 all_lines = [line.strip() for line in f if line.strip()]
@@ -419,12 +552,11 @@ class ALCFTomographyHPCController(TomographyHPCController):
             master_addr = "localhost"
             print("No PBS_NODEFILE, single node mode")
 
-        # Use explicit path to torchrun from the virtual environment
         venv_path = "/eagle/SYNAPS-I/segmentation/env"
 
-        # Build torchrun arguments
-        # rdzv is used for rendezvous in multi-node setups, meaning all nodes can find each other
-        torchrun_args = [
+        # Build command as a list (no shell escaping needed)
+        cmd_list = [
+            f"{venv_path}/bin/python", "-m", "torch.distributed.run",
             f"--nnodes={actual_nnodes}",
             f"--nproc_per_node={nproc_per_node}",
             f"--rdzv_id={pbs_jobid}",
@@ -434,48 +566,49 @@ class ALCFTomographyHPCController(TomographyHPCController):
             "--input-dir", input_dir,
             "--output-dir", output_dir,
             "--patch-size", str(patch_size),
+            "--overlap-ratio", str(overlap_ratio),
             "--batch-size", str(batch_size),
             "--confidence", str(confidence),
+            "--bpe-path", bpe_path,
             "--prompts",
         ]
-        # Add prompts to the arguments, each prompt is a separate argument
-        torchrun_args.extend([f'"{p}"' for p in prompts])
 
-        torchrun_args.extend(["--bpe-path", bpe_path])
+        # Add prompts directly - no quotes needed with list-based subprocess
+        cmd_list.extend(prompts)
 
         if use_finetuned:
-            torchrun_args.extend([
+            cmd_list.extend([
                 "--finetuned-checkpoint", finetuned_checkpoint,
                 "--original-checkpoint", original_checkpoint,
             ])
         else:
-            torchrun_args.extend(["--original-checkpoint", original_checkpoint])
+            cmd_list.extend(["--original-checkpoint", original_checkpoint])
 
-        torchrun_cmd = f"{venv_path}/bin/python -m torch.distributed.run " + " ".join(torchrun_args)
+        if skip_existing:
+            cmd_list.append("--skip-existing")
 
-        # Environment + NCCL setup - activate venv and set PATH explicitly
-        # Following best practices from ALCF:
-        # https://docs.alcf.anl.gov/polaris/data-science/frameworks/pytorch/#multi-gpu-multi-node-scale-up
-        env_setup = (
-            f"source {venv_path}/bin/activate && "
-            f"export PATH={venv_path}/bin:$PATH && "
-            "export HF_HUB_CACHE=/eagle/SYNAPS-I/segmentation/.cache/huggingface && "
-            "export HF_HOME=$HF_HUB_CACHE && "
-            "export CUDA_DEVICE_ORDER=PCI_BUS_ID && "
-            "export NCCL_NET_GDR_LEVEL=PHB && "
-            "export NCCL_CROSS_NIC=1 && "
-            "export NCCL_COLLNET_ENABLE=1 && "
-            'export NCCL_NET="AWS Libfabric" && '
-            "export LD_LIBRARY_PATH=/soft/libraries/aws-ofi-nccl/v1.9.1-aws/lib:$LD_LIBRARY_PATH && "
-            "export LD_LIBRARY_PATH=/soft/libraries/hwloc/lib/:$LD_LIBRARY_PATH && "
-            "export FI_CXI_DISABLE_HOST_REGISTER=1 && "
-            "export FI_MR_CACHE_MONITOR=userfaultfd && "
-            "export FI_CXI_DEFAULT_CQ_SIZE=131072 && "
-            f"cd {workdir} && "
-        )
+        # Environment variables
+        env = os.environ.copy()
+        env.update({
+            "PATH": f"{venv_path}/bin:{env.get('PATH', '')}",
+            "HF_HUB_CACHE": "/eagle/SYNAPS-I/segmentation/.cache/huggingface",
+            "HF_HOME": "/eagle/SYNAPS-I/segmentation/.cache/huggingface",
+            "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
+            "NCCL_NET_GDR_LEVEL": "PHB",
+            "NCCL_CROSS_NIC": "1",
+            "NCCL_COLLNET_ENABLE": "1",
+            "NCCL_NET": "AWS Libfabric",
+            "FI_CXI_DISABLE_HOST_REGISTER": "1",
+            "FI_MR_CACHE_MONITOR": "userfaultfd",
+            "FI_CXI_DEFAULT_CQ_SIZE": "131072",
+        })
+
+        # Prepend to LD_LIBRARY_PATH
+        ld_path = env.get("LD_LIBRARY_PATH", "")
+        env["LD_LIBRARY_PATH"] = f"/soft/libraries/aws-ofi-nccl/v1.9.1-aws/lib:/soft/libraries/hwloc/lib/:{ld_path}"
 
         if actual_nnodes > 1:
-            # Use mpiexec to launch torchrun on all nodes
+            # Use mpiexec to launch on all nodes
             command = [
                 "mpiexec",
                 "-n", str(actual_nnodes),
@@ -483,19 +616,18 @@ class ALCFTomographyHPCController(TomographyHPCController):
                 "-hostfile", pbs_nodefile,
                 "--cpu-bind", "depth",
                 "-d", "16",
-                "bash", "-c", env_setup + torchrun_cmd
-            ]
+            ] + cmd_list
         else:
-            command = ["bash", "-c", env_setup + torchrun_cmd]
+            command = cmd_list
 
         print(f"Running: {' '.join(command)}")
 
-        result = subprocess.run(command, stdout=None, stderr=None, text=True)
+        result = subprocess.run(command, env=env, cwd=workdir, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         print(f"STDOUT: {result.stdout[-3000:] if result.stdout else 'None'}")
         print(f"STDERR: {result.stderr[-3000:] if result.stderr else 'None'}")
 
         if result.returncode != 0:
-            raise RuntimeError(f"Segmentation failed: {result.returncode}\nSTDERR: {result.stderr[-2000:]}")
+            raise RuntimeError(f"Segmentation failed: {result.returncode}\nSTDERR: {result.stderr[-2000:] if result.stderr else 'None'}")
 
         return f"Completed in {time.time() - seg_start:.1f}s"
 
@@ -1013,4 +1145,4 @@ def alcf_reconstruction_integration_test() -> bool:
 
 
 if __name__ == "__main__":
-    alcf_reconstruction_integration_test()
+    alcf_segmentation_integration_test()
