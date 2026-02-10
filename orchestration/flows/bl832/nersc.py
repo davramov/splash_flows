@@ -254,10 +254,15 @@ date
         if num_nodes > 8:
             qos = "premium"
 
+#SBATCH -q regular
+#SBATCH -A amsc006
+#SBATCH --reservation=_CAP_SYNAPYIDINOSAM
+
         # IMPORTANT: job script must be deindented to the leftmost column or it will fail immediately
         job_script = f"""#!/bin/bash
-#SBATCH -q {qos}
-#SBATCH -A als
+#SBATCH -q regular # {qos}
+#SBATCH -A amsc006 # als
+#SBATCH --reservation=_CAP_reconstruction
 #SBATCH -C cpu
 #SBATCH --job-name=tomo_recon_{folder_name}_{file_name}
 #SBATCH --output={pscratch_path}/tomo_recon_logs/%x_%j.out
@@ -587,7 +592,7 @@ date
     def segmentation(
         self,
         recon_folder_path: str = "",
-        num_nodes: int = 4,
+        num_nodes: int = 10,
     ) -> dict:
         """
         Run SAM3 segmentation at NERSC Perlmutter (v4 with overlap + max confidence stitching).
@@ -631,10 +636,11 @@ date
         job_name = f"seg_{Path(recon_folder_path).name}"
 
         job_script = f"""#!/bin/bash
-#SBATCH -q {qos}
-#SBATCH -A als
+#SBATCH -q regular
+#SBATCH -A amsc006
+#SBATCH --reservation=_CAP_SYNAPYIDINOSAM
 #SBATCH -N {num_nodes}
-#SBATCH -C gpu
+#SBATCH -C gpu&hbm80g # gpu
 #SBATCH --job-name={job_name}
 #SBATCH --time={walltime}
 #SBATCH --ntasks-per-node=1           
@@ -1756,9 +1762,9 @@ if __name__ == "__main__":
     # job = perlmutter.job(jobid=48700180)
     # job.cancel()
     # print(f"Job {job.jobid} cancelled, state: {job.state}")
-
-    result = nersc_segmentation_integration_test()
-    print(f"Integration test result: {result}")
+    nersc_forge_recon_segment_flow('/global/raw/synaps-i/20211222_122032_petiole3_scan2.h5')
+    # result = nersc_segmentation_integration_test()
+    # print(f"Integration test result: {result}")
 
 # if __name__ == "__main__":
 
