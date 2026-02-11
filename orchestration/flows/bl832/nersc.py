@@ -207,7 +207,7 @@ date
     def reconstruct_multinode(
         self,
         file_path: str = "",
-        num_nodes: int = 2,
+        num_nodes: int = 16,
     ) -> bool:
 
         """
@@ -592,7 +592,7 @@ date
     def segmentation(
         self,
         recon_folder_path: str = "",
-        num_nodes: int = 10,
+        num_nodes: int = 26,
     ) -> dict:
         """
         Run SAM3 segmentation at NERSC Perlmutter (v4 with overlap + max confidence stitching).
@@ -610,7 +610,7 @@ date
 
         bpe_path = f"{checkpoints_dir}/bpe_simple_vocab_16e6.txt.gz"
         original_checkpoint = f"{checkpoints_dir}/sam3.pt"
-        finetuned_checkpoint = f"{checkpoints_dir}/checkpoint.pt"
+        finetuned_checkpoint = f"{checkpoints_dir}/checkpoint_v2.pt"
         
         input_dir = f"{pscratch_path}/8.3.2/scratch/{recon_folder_path}"
         output_folder = recon_folder_path.replace('/rec', '/seg')
@@ -620,7 +620,7 @@ date
         logger.info(f"Output directory: {output_dir}")
         logger.info(f"Conda environment: {conda_env_path}")
         
-        batch_size = 8        
+        batch_size = 16        
         nproc_per_node = 4
         
         prompts = ["Cortex", "Phloem Fibers", "Air-based Pith cells", 
