@@ -1279,7 +1279,7 @@ def nersc_recon_flow(
 @flow(name="nersc_recon_multinode_flow", flow_run_name="nersc_recon_multinode-{file_path}")
 def nersc_recon_multinode_flow(
     file_path: str,
-    num_nodes: Optional[int] = 4,
+    num_nodes: Optional[int] = 16,
     config: Optional[Config832] = None,
 ) -> bool:
     """
@@ -1449,7 +1449,7 @@ def nersc_forge_recon_segment_flow(
     logger.info("NERSC reconstruction controller initialized")
 
     if num_nodes is None:
-        num_nodes = config.nersc_segment_num_nodes
+        num_nodes = config.nersc_recon_num_nodes
     logger.info(f"Configured to use {num_nodes} nodes for reconstruction")
 
     # Track success for pruning decisions
