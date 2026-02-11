@@ -723,7 +723,7 @@ srun --ntasks-per-node=1 --gpus-per-task=4 \
     --output-dir "${{OUTPUT_DIR}}" \
     --patch-size 640 \
     --batch-size "${{BATCH_SIZE}}" \
-    --confidence 0.5 \
+    --confidence 0.2 \
     --prompts 'Cortex' 'Phloem Fibers' 'Air-based Pith cells' 'Water-based Pith cells' 'Xylem vessels' \
     --bpe-path "${{BPE_PATH}}" \
     --original-checkpoint "${{ORIG_CKPT}}" \
@@ -1753,16 +1753,26 @@ if __name__ == "__main__":
     # Run the integration test flow
 
     # from sfapi_client import Client
-    # from sfapi_client.compute import Machine
+    from sfapi_client.compute import Machine
 
-    # # Use your existing client setup
-    # client = NERSCTomographyHPCController.create_sfapi_client()
-    # perlmutter = client.compute(Machine.perlmutter)
+    # Use your existing client setup
+    client = NERSCTomographyHPCController.create_sfapi_client()
+    perlmutter = client.compute(Machine.perlmutter)
 
-    # job = perlmutter.job(jobid=48700180)
+    job = perlmutter.job(jobid=48781402)
+    job.cancel()
+    print(f"Job {job.jobid} cancelled, state: {job.state}")
+
+    # job = perlmutter.job(jobid=48778803)
     # job.cancel()
     # print(f"Job {job.jobid} cancelled, state: {job.state}")
-    nersc_forge_recon_segment_flow('/global/raw/synaps-i/20211222_122032_petiole3_scan2.h5')
+
+    # job = perlmutter.job(jobid=48777760)
+    # job.cancel()
+    # print(f"Job {job.jobid} cancelled, state: {job.state}")
+
+
+    # nersc_forge_recon_segment_flow('/global/raw/synaps-i/20211222_122032_petiole3_scan2.h5')
     # result = nersc_segmentation_integration_test()
     # print(f"Integration test result: {result}")
 
