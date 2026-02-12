@@ -723,7 +723,7 @@ srun --ntasks-per-node=1 --gpus-per-task=4 \
     --output-dir "${{OUTPUT_DIR}}" \
     --patch-size 400 \
     --batch-size "${{BATCH_SIZE}}" \
-    --confidence 0.5 \
+    --confidence 0.2 \
     --prompts 'Cortex' 'Phloem Fibers' 'Air-based Pith cells' 'Water-based Pith cells' 'Xylem vessels' \
     --bpe-path "${{BPE_PATH}}" \
     --original-checkpoint "${{ORIG_CKPT}}" \
