@@ -587,7 +587,7 @@ date
                     return False
             else:
                 return False
-            
+
 
     def segmentation(
         self,
@@ -605,7 +605,8 @@ date
         conda_env_path = f"{cfs_path}/envs/sam3-py311"
         
         # Paths
-        seg_scripts_dir = f"{cfs_path}/tomography_segmentation_scripts/inference_v4/forge_feb_seg_model_demo/"
+        # seg_scripts_dir = f"{cfs_path}/tomography_segmentation_scripts/inference_v4/forge_feb_seg_model_demo/"
+        seg_scripts_dir = f"{cfs_path}/tomography_segmentation_scripts/inference_v5/forge_feb_seg_model_demo/"
         checkpoints_dir = f"{cfs_path}/tomography_segmentation_scripts/sam3_finetune/sam3/"
 
         bpe_path = f"{checkpoints_dir}/bpe_simple_vocab_16e6.txt.gz"
@@ -744,7 +745,7 @@ START_TIME=$(date +%s)
 # Change to script directory
 cd {seg_scripts_dir}
 
-# Run inference with v4
+# Run inference with v5
 export TORCH_DISTRIBUTED_DEBUG=DETAIL
 export NCCL_DEBUG=INFO
 export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
@@ -759,7 +760,7 @@ srun --ntasks-per-node=1 --gpus-per-task=4 \
     --rdzv_id=$SLURM_JOB_ID \
     --rdzv_backend=c10d \
     --rdzv_endpoint=$MASTER_ADDR:$MASTER_PORT \
-    src/inference_v4_logs.py \
+    src/inference_v5.py \
     --input-dir "${{INPUT_DIR}}" \
     --output-dir "${{OUTPUT_DIR}}" \
     --patch-size {patch_size} \
@@ -1795,15 +1796,15 @@ if __name__ == "__main__":
     # Run the integration test flow
 
     # from sfapi_client import Client
-    from sfapi_client.compute import Machine
+    # from sfapi_client.compute import Machine
 
-    # Use your existing client setup
-    client = NERSCTomographyHPCController.create_sfapi_client()
-    perlmutter = client.compute(Machine.perlmutter)
+    # # Use your existing client setup
+    # client = NERSCTomographyHPCController.create_sfapi_client()
+    # perlmutter = client.compute(Machine.perlmutter)
 
-    job = perlmutter.job(jobid=48781402)
-    job.cancel()
-    print(f"Job {job.jobid} cancelled, state: {job.state}")
+    # job = perlmutter.job(jobid=48781402)
+    # job.cancel()
+    # print(f"Job {job.jobid} cancelled, state: {job.state}")
 
     # job = perlmutter.job(jobid=48778803)
     # job.cancel()
@@ -1814,9 +1815,9 @@ if __name__ == "__main__":
     # print(f"Job {job.jobid} cancelled, state: {job.state}")
 
 
-    # nersc_forge_recon_segment_flow('/global/raw/synaps-i/20211222_122032_petiole3_scan2.h5')
-    # result = nersc_segmentation_integration_test()
-    # print(f"Integration test result: {result}")
+    nersc_forge_recon_segment_flow('/global/raw/raw/DD-00842_hexemer/20260212_110324_petiole24.h5')
+    result = nersc_segmentation_integration_test()
+    print(f"Integration test result: {result}")
 
 # if __name__ == "__main__":
 
