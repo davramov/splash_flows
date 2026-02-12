@@ -619,28 +619,69 @@ date
         logger.info(f"Input directory: {input_dir}")
         logger.info(f"Output directory: {output_dir}")
         logger.info(f"Conda environment: {conda_env_path}")
+
+        # Default values (used when defaults=True or variable not found)
+        default_batch_size = 1
+        default_patch_size = 400
+        default_confidence = 0.5
+        default_overlap = 0.25  # assuming this was your original default
+        default_qos = "demand"
+        default_account = "als"
+        default_constraint = "gpu"
         
-        batch_size = 16        
-        nproc_per_node = 4
+        # Load options from Prefect variable
+        try:
+            seg_options = Variable.get("nersc-segmentation-options", default={})
+            if isinstance(seg_options, str):
+                import json
+                seg_options = json.loads(seg_options)
+        except Exception as e:
+            logger.warning(f"Could not load nersc-segmentation-options variable: {e}. Using defaults.")
+            seg_options = {"defaults": True}
+        
+        # Determine which values to use
+        use_defaults = seg_options.get("defaults", True)
+        
+        if use_defaults:
+            logger.info("Using hardcoded default segmentation parameters")
+            batch_size = default_batch_size
+            patch_size = default_patch_size
+            confidence = default_confidence
+            overlap = default_overlap
+            qos = default_qos
+            account = default_account
+            constraint = default_constraint
+        else:
+            logger.info("Using parameters from nersc-segmentation-options variable")
+            batch_size = seg_options.get("batch_size", default_batch_size)
+            patch_size = seg_options.get("patch_size", default_patch_size)
+            confidence = seg_options.get("confidence", default_confidence)
+            overlap = seg_options.get("overlap", default_overlap)
+            qos = seg_options.get("qos", default_qos)
+            account = seg_options.get("account", default_account)
+            constraint = seg_options.get("constraint", default_constraint)
+
+        # batch_size = 16        
+        # nproc_per_node = 4
         
         prompts = ["Cortex", "Phloem Fibers", "Air-based Pith cells", 
                 "Water-based Pith cells", "Xylem vessels"]
-        prompts_str = " ".join([f'"{p}"' for p in prompts])
+        # prompts_str = " ".join([f'"{p}"' for p in prompts])
         
-        if num_nodes <= 4:
-            qos = "realtime"
-        else:
-            qos = "regular"
+        # if num_nodes <= 4:
+        #     qos = "realtime"
+        # else:
+        #     qos = "regular"
         
         walltime = "00:59:00"
         job_name = f"seg_{Path(recon_folder_path).name}"
 
         job_script = f"""#!/bin/bash
-#SBATCH -q regular
-#SBATCH -A amsc006
+#SBATCH -q {qos}
+#SBATCH -A {account}
 #SBATCH --reservation=_CAP_SYNAPYIDINOSAM
 #SBATCH -N {num_nodes}
-#SBATCH -C gpu&hbm80g # gpu
+#SBATCH -C {constraint} # gpu
 #SBATCH --job-name={job_name}
 #SBATCH --time={walltime}
 #SBATCH --ntasks-per-node=1           
@@ -721,9 +762,10 @@ srun --ntasks-per-node=1 --gpus-per-task=4 \
     src/inference_v4_logs.py \
     --input-dir "${{INPUT_DIR}}" \
     --output-dir "${{OUTPUT_DIR}}" \
-    --patch-size 400 \
+    --patch-size {patch_size} \
     --batch-size "${{BATCH_SIZE}}" \
-    --confidence 0.2 \
+    --confidence {confidence} \
+    --overlap-ratio {overlap} \
     --prompts 'Cortex' 'Phloem Fibers' 'Air-based Pith cells' 'Water-based Pith cells' 'Xylem vessels' \
     --bpe-path "${{BPE_PATH}}" \
     --original-checkpoint "${{ORIG_CKPT}}" \
