@@ -624,7 +624,7 @@ date
         # Default values (used when defaults=True or variable not found)
         default_batch_size = 1
         default_patch_size = 400
-        default_confidence = 0.5
+        default_confidence = [0.5]
         default_overlap = 0.25  # assuming this was your original default
         default_qos = "demand"
         default_account = "als"
@@ -668,6 +668,12 @@ date
         # nproc_per_node = 4
         
         finetuned_checkpoint = f"{checkpoints_dir}/{checkpoint}"
+
+        # Format confidence for command line (handles both single value and list)
+        if isinstance(confidence, list):
+            confidence_str = " ".join(str(c) for c in confidence)
+        else:
+            confidence_str = str(confidence)
 
         prompts = ["Cortex", "Phloem Fibers", "Air-based Pith cells", 
                 "Water-based Pith cells", "Xylem vessels"]
@@ -769,7 +775,7 @@ srun --ntasks-per-node=1 --gpus-per-task=4 \
     --output-dir "${{OUTPUT_DIR}}" \
     --patch-size {patch_size} \
     --batch-size "${{BATCH_SIZE}}" \
-    --confidence {confidence} \
+    --confidence {confidence_str} \
     --overlap-ratio {overlap} \
     --prompts 'Cortex' 'Phloem Fibers' 'Air-based Pith cells' 'Water-based Pith cells' 'Xylem vessels' \
     --bpe-path "${{BPE_PATH}}" \
