@@ -595,9 +595,9 @@ date
         num_nodes: int = 26,
     ) -> dict:
         """
-        Run SAM3 segmentation at NERSC Perlmutter (v4 with overlap + max confidence stitching).
+        Run SAM3 segmentation at NERSC Perlmutter (v5 with overlap + max confidence stitching).
         """
-        logger.info("Starting NERSC segmentation process (inference_v4).")
+        logger.info("Starting NERSC segmentation process (inference_v5).")
 
         user = self.client.user()
         pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
@@ -611,7 +611,7 @@ date
 
         bpe_path = f"{checkpoints_dir}/bpe_simple_vocab_16e6.txt.gz"
         original_checkpoint = f"{checkpoints_dir}/sam3.pt"
-        finetuned_checkpoint = f"{checkpoints_dir}/checkpoint_v2.pt"
+        finetuned_checkpoint = f"{checkpoints_dir}/checkpoint_v3.pt"
         
         input_dir = f"{pscratch_path}/8.3.2/scratch/{recon_folder_path}"
         output_folder = recon_folder_path.replace('/rec', '/seg')
