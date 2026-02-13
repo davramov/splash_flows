@@ -611,7 +611,7 @@ date
 
         bpe_path = f"{checkpoints_dir}/bpe_simple_vocab_16e6.txt.gz"
         original_checkpoint = f"{checkpoints_dir}/sam3.pt"
-        finetuned_checkpoint = f"{checkpoints_dir}/checkpoint_v3.pt"
+        # finetuned_checkpoint = f"{checkpoints_dir}/checkpoint_v3.pt"
         
         input_dir = f"{pscratch_path}/8.3.2/scratch/{recon_folder_path}"
         output_folder = recon_folder_path.replace('/rec', '/seg')
@@ -629,6 +629,7 @@ date
         default_qos = "demand"
         default_account = "als"
         default_constraint = "gpu"
+        default_checkpoint = "checkpoint_v3.pt"
         
         # Load options from Prefect variable
         try:
@@ -652,6 +653,7 @@ date
             qos = default_qos
             account = default_account
             constraint = default_constraint
+            checkpoint = default_checkpoint
         else:
             logger.info("Using parameters from nersc-segmentation-options variable")
             batch_size = seg_options.get("batch_size", default_batch_size)
@@ -661,10 +663,12 @@ date
             qos = seg_options.get("qos", default_qos)
             account = seg_options.get("account", default_account)
             constraint = seg_options.get("constraint", default_constraint)
-
+            checkpoint = seg_options.get("checkpoint", default_checkpoint)
         # batch_size = 16        
         # nproc_per_node = 4
         
+        finetuned_checkpoint = f"{checkpoints_dir}/{checkpoint}"
+
         prompts = ["Cortex", "Phloem Fibers", "Air-based Pith cells", 
                 "Water-based Pith cells", "Xylem vessels"]
         # prompts_str = " ".join([f'"{p}"' for p in prompts])
