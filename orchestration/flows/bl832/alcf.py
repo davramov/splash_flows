@@ -942,6 +942,140 @@ class ALCFTomographyHPCController(TomographyHPCController):
             raise RuntimeError(f"Segmentation failed: {result.returncode}\nSTDERR: {result.stderr[-2000:] if result.stderr else 'None'}")
         return f"Cellpose Segmentation completed in {time.time() - seg_start:.1f}s"
 
+    def combine_segmentations(
+        self,
+        recon_folder_path: str = "",
+    ) -> bool:
+        """
+        Run CPU-based combination of Cellpose+DINO and SAM3+DINO segmentation results at ALCF
+        through Globus Compute.
+
+        :param recon_folder_path: Path to the reconstructed data folder (e.g. 'folder/rec20250101_scan/')
+        :return: True if the task completed successfully, False otherwise.
+        """
+        logger = get_run_logger()
+
+        seg_folder = recon_folder_path.replace("/rec", "/seg")
+
+        input_dir = f"{self.allocation_root}/data/bl832/scratch/reconstruction/{recon_folder_path}"
+        cellpose_results = f"{self.allocation_root}/data/bl832/scratch/segmentation/{seg_folder}/cellpose"
+        dino_results = f"{self.allocation_root}/data/bl832/scratch/segmentation/{seg_folder}/dino"
+        sam3_results = f"{self.allocation_root}/data/bl832/scratch/segmentation/{seg_folder}/sam3"
+        combined_output = f"{self.allocation_root}/data/bl832/scratch/segmentation/{seg_folder}/combined"
+
+        workdir = f"{self.allocation_root}/segmentation/scripts/inference_v5/forge_feb_seg_model_demo"
+
+        gcc = Client(code_serialization_strategy=CombinedCode())
+
+        endpoint_id = Variable.get(
+            "alcf-globus-compute-cpu-uuid",
+            default="168c595b-9493-42db-9c6a-aad960913de2",
+            _sync=True
+        )
+
+        with Executor(endpoint_id=endpoint_id, client=gcc) as fxe:
+            logger.info(f"Running segmentation combination on {recon_folder_path} at ALCF")
+            future = fxe.submit(
+                self._combine_segmentations_wrapper,
+                input_dir=input_dir,
+                cellpose_results=cellpose_results,
+                dino_results=dino_results,
+                sam3_results=sam3_results,
+                combined_output=combined_output,
+                workdir=workdir,
+            )
+            result = self._wait_for_globus_compute_future(future, "combine_segmentations", check_interval=10)
+
+        return result
+
+    @staticmethod
+    def _combine_segmentations_wrapper(
+        input_dir: str = "/eagle/SYNAPS-I/data/bl832/scratch/reconstruction/",
+        cellpose_results: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/cellpose",
+        dino_results: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/dino",
+        sam3_results: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/sam3",
+        combined_output: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/combined",
+        workdir: str = "/eagle/SYNAPS-I/segmentation/scripts/inference_v5/forge_feb_seg_model_demo",
+    ) -> str:
+        """
+        Run CPU-based combination of Cellpose+DINO and SAM3+DINO segmentation outputs.
+        Executed via Globus Compute on a CPU endpoint.
+
+        :param input_dir: Directory containing the original reconstructed input data.
+        :param cellpose_results: Directory containing Cellpose segmentation outputs.
+        :param dino_results: Directory containing DINO segmentation outputs.
+        :param sam3_results: Directory containing SAM3 segmentation outputs.
+        :param combined_output: Root directory for combined output results.
+        :param workdir: Working directory for the combination scripts.
+        :return: Confirmation message upon completion.
+        """
+        import os
+        import subprocess
+        import time
+
+        combine_start = time.time()
+        os.chdir(workdir)
+
+        venv_path = "/eagle/SYNAPS-I/segmentation/env"
+
+        env = os.environ.copy()
+        env.update({
+            "PATH": f"{venv_path}/bin:{env.get('PATH', '')}",
+            "HF_HUB_CACHE": "/eagle/SYNAPS-I/segmentation/.cache/huggingface",
+            "HF_HOME": "/eagle/SYNAPS-I/segmentation/.cache/huggingface",
+        })
+
+        tasks = [
+            {
+                "name": "cellpose_dino",
+                "module": "src.combine_cellpose_dino",
+                "args": [
+                    "--input-dir", input_dir,
+                    "--instance-masks-dir", f"{cellpose_results}/instance_masks",
+                    "--semantic-masks-dir", f"{dino_results}/semantic_masks",
+                    "--output-dir", f"{combined_output}/cellpose_dino",
+                ],
+            },
+            {
+                "name": "sam_dino",
+                "module": "src.combine_sam_dino",
+                "args": [
+                    "--input-dir", input_dir,
+                    "--instance-masks-dir", sam3_results,
+                    "--semantic-masks-dir", f"{dino_results}/semantic_masks",
+                    "--output-dir", f"{combined_output}/sam_dino",
+                ],
+            },
+        ]
+
+        failed = []
+        for combine_task in tasks:
+            cmd = [f"{venv_path}/bin/python", "-m", combine_task["module"]] + combine_task["args"]
+            print(f"Running {combine_task['name']}: {' '.join(cmd)}")
+
+            result = subprocess.run(
+                cmd,
+                env=env,
+                cwd=workdir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+
+            print(f"STDOUT [{combine_task['name']}]: {result.stdout[-2000:] if result.stdout else 'None'}")
+            print(f"STDERR [{combine_task['name']}]: {result.stderr[-2000:] if result.stderr else 'None'}")
+
+            if result.returncode != 0:
+                print(f"FAILED [{combine_task['name']}]: return code {result.returncode}")
+                failed.append(combine_task["name"])
+            else:
+                print(f"SUCCESS [{combine_task['name']}]")
+
+        if failed:
+            raise RuntimeError(f"Segmentation combination failed for: {failed}")
+
+        return f"Segmentation combination completed in {time.time() - combine_start:.1f}s"
+
     @staticmethod
     def _wait_for_globus_compute_future(
         future: Future,
