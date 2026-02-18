@@ -773,7 +773,7 @@ class ALCFTomographyHPCController(TomographyHPCController):
             master_addr = "localhost"
             print("No PBS_NODEFILE, single node mode")
 
-        venv_path = "/eagle/SYNAPS-I/segmentation/env"
+        venv_path = "/eagle/SYNAPS-I/segmentation/env_dino_cellpose""
 
         # Build command as a list
         cmd_list = [
@@ -882,7 +882,7 @@ class ALCFTomographyHPCController(TomographyHPCController):
             master_addr = "localhost"
             print("No PBS_NODEFILE, single node mode")
 
-        venv_path = "/eagle/SYNAPS-I/segmentation/env"
+        venv_path = "/eagle/SYNAPS-I/segmentation/env_dino_cellpose"
 
         # Build command as a list
         cmd_list = [
