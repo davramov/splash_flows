@@ -378,8 +378,8 @@ class ALCFTomographyHPCController(TomographyHPCController):
         gcc = Client(code_serialization_strategy=CombinedCode())
 
         endpoint_id = Variable.get(
-            "alcf-globus-compute-seg-uuid",
-            default="168c595b-9493-42db-9c6a-aad960913de2",
+            "alcf-globus-compute-seg-dino-uuid",
+            default="07b24393-f649-4f6b-8860-1bfb211d17f4",
             _sync=True
         )
 
@@ -423,8 +423,8 @@ class ALCFTomographyHPCController(TomographyHPCController):
         gcc = Client(code_serialization_strategy=CombinedCode())
 
         endpoint_id = Variable.get(
-            "alcf-globus-compute-seg-uuid",
-            default="168c595b-9493-42db-9c6a-aad960913de2",
+            "alcf-globus-compute-seg-cellpose-uuid",
+            default="ba03a9ba-0f50-420d-85ff-cc8ab83997b1",
             _sync=True
         )
 
@@ -979,8 +979,8 @@ class ALCFTomographyHPCController(TomographyHPCController):
         gcc = Client(code_serialization_strategy=CombinedCode())
 
         endpoint_id = Variable.get(
-            "alcf-globus-compute-cpu-uuid",
-            default="168c595b-9493-42db-9c6a-aad960913de2",
+            "alcf-globus-compute-seg-combine-uuid",
+            default="f36005c4-079c-4c61-b73e-48df92e8ef04",
             _sync=True
         )
 
