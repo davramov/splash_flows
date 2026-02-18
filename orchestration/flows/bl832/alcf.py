@@ -419,8 +419,8 @@ class ALCFTomographyHPCController(TomographyHPCController):
 
         rundir = f"{self.allocation_root}/data/bl832/scratch/reconstruction/{recon_folder_path}"
         output_folder = recon_folder_path.replace('/rec', '/seg')
-        seg_dir = f"{self.allocation_root}/data/bl832/scratch/segmentation/{output_folder}"
-        output_dir = f"{seg_dir}/cellpose"   # Cellpose writes class folders directly here
+        seg_base = f"{self.allocation_root}/data/bl832/scratch/segmentation/{output_folder}"
+        output_dir = f"{seg_base}/cellpose"   # Cellpose writes class folders directly here
 
         gcc = Client(code_serialization_strategy=CombinedCode())
 
@@ -1609,7 +1609,18 @@ def alcf_forge_recon_multisegment_flow(
 
     any_seg_success = any([sam3_success, dino_success, cellpose_success])
 
-    # ── STEP 5: Transfer segmentation outputs to data832 ─────────────────────
+    # ── STEP 5: Combine segmentation results (sync, CPU) ─────────────────────
+    combine_success = False
+    if dino_success and (sam3_success or cellpose_success):
+        logger.info("Running segmentation combination (SAM3+DINO and Cellpose+DINO).")
+        combine_success = tomography_controller.combine_segmentations(
+            recon_folder_path=scratch_path_tiff
+        )
+        logger.info(f"Combination result: {combine_success}")
+    else:
+        logger.warning("Skipping combination: requires DINO plus at least one of SAM3/Cellpose.")
+
+    # ── STEP 6: Transfer segmentation outputs to data832 ─────────────────────
     segment_transfer_success = False
     if any_seg_success:
         logger.info(f"Transferring segmentation outputs from ALCF to data832: {scratch_path_segment}")
