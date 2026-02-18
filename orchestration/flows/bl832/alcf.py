@@ -325,8 +325,8 @@ class ALCFTomographyHPCController(TomographyHPCController):
 
         rundir = f"{self.allocation_root}/data/bl832/scratch/reconstruction/{recon_folder_path}"
         output_folder = recon_folder_path.replace('/rec', '/seg')
-        output_dir = f"{self.allocation_root}/data/bl832/scratch/segmentation/{output_folder}"
-
+        seg_base = f"{self.allocation_root}/data/bl832/scratch/segmentation/{output_folder}"
+        output_dir = f"{seg_base}/sam3"   # SAM3 writes class folders directly here
         gcc = Client(code_serialization_strategy=CombinedCode())
 
         endpoint_id = Variable.get(
@@ -372,7 +372,8 @@ class ALCFTomographyHPCController(TomographyHPCController):
 
         rundir = f"{self.allocation_root}/data/bl832/scratch/reconstruction/{recon_folder_path}"
         output_folder = recon_folder_path.replace('/rec', '/seg')
-        output_dir = f"{self.allocation_root}/data/bl832/scratch/segmentation/{output_folder}"
+        seg_base = f"{self.allocation_root}/data/bl832/scratch/segmentation/{output_folder}"
+        output_dir = f"{seg_base}/dino"   # DINO writes class folders directly here
 
         gcc = Client(code_serialization_strategy=CombinedCode())
 
@@ -416,7 +417,8 @@ class ALCFTomographyHPCController(TomographyHPCController):
 
         rundir = f"{self.allocation_root}/data/bl832/scratch/reconstruction/{recon_folder_path}"
         output_folder = recon_folder_path.replace('/rec', '/seg')
-        output_dir = f"{self.allocation_root}/data/bl832/scratch/segmentation/{output_folder}"
+        seg_dir = f"{self.allocation_root}/data/bl832/scratch/segmentation/{output_folder}"
+        output_dir = f"{seg_dir}/cellpose"   # Cellpose writes class folders directly here
 
         gcc = Client(code_serialization_strategy=CombinedCode())
 
@@ -953,13 +955,14 @@ class ALCFTomographyHPCController(TomographyHPCController):
         """
         logger = get_run_logger()
 
-        seg_folder = recon_folder_path.replace("/rec", "/seg")
+        output_folder = recon_folder_path.replace("/rec", "/seg")
+        seg_base = f"{self.allocation_root}/data/bl832/scratch/segmentation/{output_folder}"
 
         input_dir = f"{self.allocation_root}/data/bl832/scratch/reconstruction/{recon_folder_path}"
-        cellpose_results = f"{self.allocation_root}/data/bl832/scratch/segmentation/{seg_folder}/cellpose"
-        dino_results = f"{self.allocation_root}/data/bl832/scratch/segmentation/{seg_folder}/dino"
-        sam3_results = f"{self.allocation_root}/data/bl832/scratch/segmentation/{seg_folder}/sam3"
-        combined_output = f"{self.allocation_root}/data/bl832/scratch/segmentation/{seg_folder}/combined"
+        sam3_results = f"{seg_base}/sam3"
+        cellpose_results = f"{seg_base}/cellpose"
+        dino_results = f"{seg_base}/dino"
+        combined_output = f"{seg_base}/combined"
 
         workdir = f"{self.allocation_root}/segmentation/scripts/inference_v5/forge_feb_seg_model_demo"
 
