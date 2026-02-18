@@ -717,7 +717,10 @@ class ALCFTomographyHPCController(TomographyHPCController):
         print(f"STDERR: {result.stderr[-3000:] if result.stderr else 'None'}")
 
         if result.returncode != 0:
-            raise RuntimeError(f"Segmentation failed: {result.returncode}\nSTDERR: {result.stderr[-2000:] if result.stderr else 'None'}")
+            raise RuntimeError(
+                f"Segmentation failed: {result.returncode}\n"
+                f"STDERR: {result.stderr[-2000:] if result.stderr else 'None'}"
+            )
 
         return f"Completed in {time.time() - seg_start:.1f}s"
 
@@ -833,7 +836,11 @@ class ALCFTomographyHPCController(TomographyHPCController):
         print(f"STDERR: {result.stderr[-3000:] if result.stderr else 'None'}")
 
         if result.returncode != 0:
-            raise RuntimeError(f"Segmentation failed: {result.returncode}\nSTDERR: {result.stderr[-2000:] if result.stderr else 'None'}")
+            raise RuntimeError(
+                f"Segmentation failed: {result.returncode}\n"
+                f"STDERR: {result.stderr[-2000:] if result.stderr else 'None'}"
+            )
+
         return f"DINO Segmentation completed in {time.time() - seg_start:.1f}s"
 
     @staticmethod
@@ -941,7 +948,10 @@ class ALCFTomographyHPCController(TomographyHPCController):
         print(f"STDERR: {result.stderr[-3000:] if result.stderr else 'None'}")
 
         if result.returncode != 0:
-            raise RuntimeError(f"Segmentation failed: {result.returncode}\nSTDERR: {result.stderr[-2000:] if result.stderr else 'None'}")
+            raise RuntimeError(
+                f"Segmentation failed: {result.returncode}\n"
+                f"STDERR: {result.stderr[-2000:] if result.stderr else 'None'}"
+            )
         return f"Cellpose Segmentation completed in {time.time() - seg_start:.1f}s"
 
     def combine_segmentations(
