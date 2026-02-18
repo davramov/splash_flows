@@ -338,8 +338,8 @@ class ALCFTomographyHPCController(TomographyHPCController):
         # segmentation_module = "src.inference_v2_optimized2"
         # workdir = f"{self.allocation_root}/segmentation/scripts/forge_feb_seg_model_demo_v2/forge_feb_seg_model_demo"
 
-        segmentation_module = "src.inference_v4"
-        workdir = f"{self.allocation_root}/segmentation/scripts/inference_v4/forge_feb_seg_model_demo"
+        segmentation_module = "src.inference_v5"
+        workdir = f"{self.allocation_root}/segmentation/scripts/inference_v5/forge_feb_seg_model_demo"
 
         with Executor(endpoint_id=endpoint_id, client=gcc) as fxe:
             logger.info(f"Running segmentation on {recon_folder_path} at ALCF")
@@ -351,6 +351,94 @@ class ALCFTomographyHPCController(TomographyHPCController):
                 workdir=workdir
             )
             result = self._wait_for_globus_compute_future(future, "segmentation", check_interval=10)
+
+        return result
+
+    def segmentation_dino(
+        self,
+        recon_folder_path: str = "",
+    ) -> bool:
+        """
+        Run tomography segmentation at ALCF through Globus Compute.
+
+        :param recon_folder_path: Path to the reconstructed data folder to be processed.
+        :return: True if the task completed successfully, False otherwise.
+        """
+        logger = get_run_logger()
+
+        # Operate on reconstructed data
+        # Input: folder_name/rec20211222_125057_petiole4/
+        # Output should go to: folder_name/seg20211222_125057_petiole4/
+
+        rundir = f"{self.allocation_root}/data/bl832/scratch/reconstruction/{recon_folder_path}"
+        output_folder = recon_folder_path.replace('/rec', '/seg')
+        output_dir = f"{self.allocation_root}/data/bl832/scratch/segmentation/{output_folder}"
+
+        gcc = Client(code_serialization_strategy=CombinedCode())
+
+        endpoint_id = Variable.get(
+            "alcf-globus-compute-seg-uuid",
+            default="168c595b-9493-42db-9c6a-aad960913de2",
+            _sync=True
+        )
+
+        segmentation_module = "src.inference_dino_v1"
+        workdir = f"{self.allocation_root}/segmentation/scripts/inference_v5/forge_feb_seg_model_demo"
+
+        with Executor(endpoint_id=endpoint_id, client=gcc) as fxe:
+            logger.info(f"Running segmentation on {recon_folder_path} at ALCF")
+            future = fxe.submit(
+                self._segmentation_dino_wrapper,
+                input_dir=rundir,
+                output_dir=output_dir,
+                script_module=segmentation_module,
+                workdir=workdir
+            )
+            result = self._wait_for_globus_compute_future(future, "segmentation_dino", check_interval=10)
+
+        return result
+
+    def segmentation_cellpose(
+        self,
+        recon_folder_path: str = "",
+    ) -> bool:
+        """
+        Run tomography segmentation at ALCF through Globus Compute.
+
+        :param recon_folder_path: Path to the reconstructed data folder to be processed.
+        :return: True if the task completed successfully, False otherwise.
+        """
+        logger = get_run_logger()
+
+        # Operate on reconstructed data
+        # Input: folder_name/rec20211222_125057_petiole4/
+        # Output should go to: folder_name/seg20211222_125057_petiole4/
+
+        rundir = f"{self.allocation_root}/data/bl832/scratch/reconstruction/{recon_folder_path}"
+        output_folder = recon_folder_path.replace('/rec', '/seg')
+        output_dir = f"{self.allocation_root}/data/bl832/scratch/segmentation/{output_folder}"
+
+        gcc = Client(code_serialization_strategy=CombinedCode())
+
+        endpoint_id = Variable.get(
+            "alcf-globus-compute-seg-uuid",
+            default="168c595b-9493-42db-9c6a-aad960913de2",
+            _sync=True
+        )
+
+        segmentation_module = "src.inference_cellpose_v1"
+        workdir = f"{self.allocation_root}/segmentation/scripts/inference_v5/forge_feb_seg_model_demo"
+
+        with Executor(endpoint_id=endpoint_id, client=gcc) as fxe:
+            logger.info(f"Running segmentation on {recon_folder_path} at ALCF")
+            future = fxe.submit(
+                self._segmentation_cellpose_wrapper,
+                input_dir=rundir,
+                output_dir=output_dir,
+                script_module=segmentation_module,
+                workdir=workdir
+            )
+            result = self._wait_for_globus_compute_future(future, "segmentation_cellpose", check_interval=10)
 
         return result
 
@@ -504,8 +592,8 @@ class ALCFTomographyHPCController(TomographyHPCController):
     def _segmentation_wrapper(
         input_dir: str = "/eagle/SYNAPS-I/data/bl832/scratch/reconstruction/",
         output_dir: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/",
-        script_module: str = "src.inference_v4",
-        workdir: str = "/eagle/SYNAPS-I/segmentation/scripts/inference_v4/forge_feb_seg_model_demo",
+        script_module: str = "src.inference_v5",
+        workdir: str = "/eagle/SYNAPS-I/segmentation/scripts/inference_v5/forge_feb_seg_model_demo",
         nproc_per_node: int = 4,
         patch_size: int = 640,
         overlap_ratio: float = 0.25,
@@ -628,6 +716,229 @@ class ALCFTomographyHPCController(TomographyHPCController):
             raise RuntimeError(f"Segmentation failed: {result.returncode}\nSTDERR: {result.stderr[-2000:] if result.stderr else 'None'}")
 
         return f"Completed in {time.time() - seg_start:.1f}s"
+
+    @staticmethod
+    def _segmentation_dino_wrapper(
+        input_dir: str = "/eagle/SYNAPS-I/data/bl832/scratch/reconstruction/",
+        output_dir: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/",
+        finetuned_checkpoint: str = "/eagle/SYNAPS-I/segmentation/dino/best.ckpt",
+        save_overlay: bool = True,
+        batch_size: int = 4,
+        num_workers: int = 4,
+        nproc_per_node: int = 4,
+        workdir: str = "/eagle/SYNAPS-I/segmentation/scripts/inference_v5/forge_feb_seg_model_demo",
+        script_module: str = "src.inference_dino_v1",
+    ) -> str:
+        """
+        Wrapper function to run segmentation using the DINO model on ALCF.
+
+        :param input_dir: Directory containing input data for segmentation.
+        :param output_dir: Directory to save segmentation outputs.
+        :param finetuned_checkpoint: Path to the finetuned DINO model checkpoint.
+        :param save_overlay: Whether to save overlay visualizations of the segmentation.
+        :param batch_size: Batch size for segmentation.
+        :param num_workers: Number of worker processes for data loading.
+        :param nproc_per_node: Number of processes per node for distributed training.
+        :param workdir: Working directory for the segmentation script.
+        :return: Confirmation message upon completion.
+        """
+        import os
+        import subprocess
+        import time
+
+        seg_start = time.time()
+        os.chdir(workdir)
+
+        # Get PBS info
+        pbs_nodefile = os.environ.get("PBS_NODEFILE")
+        pbs_jobid = os.environ.get("PBS_JOBID", "12345")
+
+        print("=== PBS DEBUG ===")
+        print(f"PBS_NODEFILE: {pbs_nodefile}")
+        print(f"PBS_JOBID: {pbs_jobid}")
+
+        if pbs_nodefile and os.path.exists(pbs_nodefile):
+            with open(pbs_nodefile, 'r') as f:
+                all_lines = [line.strip() for line in f if line.strip()]
+            unique_nodes = list(dict.fromkeys(all_lines))
+            actual_nnodes = len(unique_nodes)
+            master_addr = unique_nodes[0]
+            print(f"PBS_NODEFILE contents: {all_lines}")
+            print(f"Unique nodes ({actual_nnodes}): {unique_nodes}")
+            print(f"Master: {master_addr}")
+        else:
+            actual_nnodes = 1
+            master_addr = "localhost"
+            print("No PBS_NODEFILE, single node mode")
+
+        venv_path = "/eagle/SYNAPS-I/segmentation/env"
+
+        # Build command as a list
+        cmd_list = [
+            f"{venv_path}/bin/python", "-m", "torch.distributed.run",
+            f"--nnodes={actual_nnodes}",
+            f"--nproc_per_node={nproc_per_node}",
+            f"--rdzv_id={pbs_jobid}",
+            "--rdzv_backend=c10d",
+            f"--rdzv_endpoint={master_addr}:29500",
+            "-m", script_module,
+            "--input-dir", input_dir,
+            "--output-dir", output_dir,
+            "--batch-size", str(batch_size),
+            "--finetuned-checkpoint", finetuned_checkpoint,
+            "--save-overlay",
+        ]
+
+        # Environment variables
+        env = os.environ.copy()
+        env.update({
+            "PATH": f"{venv_path}/bin:{env.get('PATH', '')}",
+            "HF_HUB_CACHE": "/eagle/SYNAPS-I/segmentation/.cache/huggingface",
+            "HF_HOME": "/eagle/SYNAPS-I/segmentation/.cache/huggingface",
+            "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
+            "NCCL_NET_GDR_LEVEL": "PHB",
+            "NCCL_CROSS_NIC": "1",
+            "NCCL_COLLNET_ENABLE": "1",
+            "NCCL_NET": "AWS Libfabric",
+            "FI_CXI_DISABLE_HOST_REGISTER": "1",
+            "FI_MR_CACHE_MONITOR": "userfaultfd",
+            "FI_CXI_DEFAULT_CQ_SIZE": "131072",
+        })
+
+        # Prepend to LD_LIBRARY_PATH
+        ld_path = env.get("LD_LIBRARY_PATH", "")
+        env["LD_LIBRARY_PATH"] = f"/soft/libraries/aws-ofi-nccl/v1.9.1-aws/lib:/soft/libraries/hwloc/lib/:{ld_path}"
+
+        if actual_nnodes > 1:
+            # Use mpiexec to launch on all nodes
+            command = [
+                "mpiexec",
+                "-n", str(actual_nnodes),
+                "-ppn", "1",
+                "-hostfile", pbs_nodefile,
+                "--cpu-bind", "depth",
+                "-d", "16",
+            ] + cmd_list
+        else:
+            command = cmd_list
+
+        print(f"Running: {' '.join(command)}")
+
+        result = subprocess.run(command, env=env, cwd=workdir, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        print(f"STDOUT: {result.stdout[-3000:] if result.stdout else 'None'}")
+        print(f"STDERR: {result.stderr[-3000:] if result.stderr else 'None'}")
+
+        if result.returncode != 0:
+            raise RuntimeError(f"Segmentation failed: {result.returncode}\nSTDERR: {result.stderr[-2000:] if result.stderr else 'None'}")
+        return f"DINO Segmentation completed in {time.time() - seg_start:.1f}s"
+
+    @staticmethod
+    def _segmentation_cellpose_wrapper(
+        input_dir: str = "/eagle/SYNAPS-I/data/bl832/scratch/reconstruction/",
+        output_dir: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/",
+        finetuned_checkpoint: str = "/eagle/SYNAPS-I/segmentation/cellpose/petiole_model_flow0",
+        save_overlay: bool = True,
+        nproc_per_node: int = 4,
+        workdir: str = "/eagle/SYNAPS-I/segmentation/scripts/inference_v5/forge_feb_seg_model_demo",
+        script_module: str = "src.inference_cellpose_v1",
+    ) -> str:
+        """
+        Wrapper function to run segmentation using the Cellpose model on ALCF.
+
+        :param input_dir: Directory containing input data for segmentation.
+        :param output_dir: Directory to save segmentation outputs.
+        :param finetuned_checkpoint: Path to the finetuned Cellpose model checkpoint.
+        :param save_overlay: Whether to save overlay visualizations of the segmentation.
+        :return: Confirmation message upon completion.
+        """
+        import os
+        import subprocess
+        import time
+
+        seg_start = time.time()
+        os.chdir(workdir)
+
+        # Get PBS info
+        pbs_nodefile = os.environ.get("PBS_NODEFILE")
+        pbs_jobid = os.environ.get("PBS_JOBID", "12345")
+
+        print("=== PBS DEBUG ===")
+        print(f"PBS_NODEFILE: {pbs_nodefile}")
+        print(f"PBS_JOBID: {pbs_jobid}")
+
+        if pbs_nodefile and os.path.exists(pbs_nodefile):
+            with open(pbs_nodefile, 'r') as f:
+                all_lines = [line.strip() for line in f if line.strip()]
+            unique_nodes = list(dict.fromkeys(all_lines))
+            actual_nnodes = len(unique_nodes)
+            master_addr = unique_nodes[0]
+            print(f"PBS_NODEFILE contents: {all_lines}")
+            print(f"Unique nodes ({actual_nnodes}): {unique_nodes}")
+            print(f"Master: {master_addr}")
+        else:
+            actual_nnodes = 1
+            master_addr = "localhost"
+            print("No PBS_NODEFILE, single node mode")
+
+        venv_path = "/eagle/SYNAPS-I/segmentation/env"
+
+        # Build command as a list
+        cmd_list = [
+            f"{venv_path}/bin/python", "-m", "torch.distributed.run",
+            f"--nnodes={actual_nnodes}",
+            f"--nproc_per_node={nproc_per_node}",
+            f"--rdzv_id={pbs_jobid}",
+            "--rdzv_backend=c10d",
+            f"--rdzv_endpoint={master_addr}:29500",
+            "-m", script_module,
+            "--input-dir", input_dir,
+            "--output-dir", output_dir,
+            "--finetuned-checkpoint", finetuned_checkpoint,
+            "--save-overlay",
+        ]
+
+        # Environment variables
+        env = os.environ.copy()
+        env.update({
+            "PATH": f"{venv_path}/bin:{env.get('PATH', '')}",
+            "HF_HUB_CACHE": "/eagle/SYNAPS-I/segmentation/.cache/huggingface",
+            "HF_HOME": "/eagle/SYNAPS-I/segmentation/.cache/huggingface",
+            "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
+            "NCCL_NET_GDR_LEVEL": "PHB",
+            "NCCL_CROSS_NIC": "1",
+            "NCCL_COLLNET_ENABLE": "1",
+            "NCCL_NET": "AWS Libfabric",
+            "FI_CXI_DISABLE_HOST_REGISTER": "1",
+            "FI_MR_CACHE_MONITOR": "userfaultfd",
+            "FI_CXI_DEFAULT_CQ_SIZE": "131072",
+        })
+
+        # Prepend to LD_LIBRARY_PATH
+        ld_path = env.get("LD_LIBRARY_PATH", "")
+        env["LD_LIBRARY_PATH"] = f"/soft/libraries/aws-ofi-nccl/v1.9.1-aws/lib:/soft/libraries/hwloc/lib/:{ld_path}"
+
+        if actual_nnodes > 1:
+            # Use mpiexec to launch on all nodes
+            command = [
+                "mpiexec",
+                "-n", str(actual_nnodes),
+                "-ppn", "1",
+                "-hostfile", pbs_nodefile,
+                "--cpu-bind", "depth",
+                "-d", "16",
+            ] + cmd_list
+        else:
+            command = cmd_list
+
+        print(f"Running: {' '.join(command)}")
+
+        result = subprocess.run(command, env=env, cwd=workdir, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        print(f"STDOUT: {result.stdout[-3000:] if result.stdout else 'None'}")
+        print(f"STDERR: {result.stderr[-3000:] if result.stderr else 'None'}")
+
+        if result.returncode != 0:
+            raise RuntimeError(f"Segmentation failed: {result.returncode}\nSTDERR: {result.stderr[-2000:] if result.stderr else 'None'}")
+        return f"Cellpose Segmentation completed in {time.time() - seg_start:.1f}s"
 
     @staticmethod
     def _wait_for_globus_compute_future(
@@ -1023,6 +1334,160 @@ def alcf_forge_recon_segment_flow(
         return False
 
 
+@flow(name="alcf_forge_recon_multisegment_flow",
+      flow_run_name="alcf_recon_multiseg-{file_path}")
+def alcf_forge_recon_multisegment_flow(
+    file_path: str,
+    config: Optional[Config832] = None,
+) -> bool:
+    """
+    Transfer raw data to ALCF, run multinode reconstruction synchronously,
+    then run SAM3, DINO, and Cellpose segmentation concurrently.
+
+    :param file_path: Path to the raw .h5 file (relative), e.g. 'folder/20250101_scan.h5'
+    :param config: Optional Config832 instance.
+    :return: True if reconstruction and all segmentation tasks succeeded, False otherwise.
+    """
+    logger = get_run_logger()
+
+    if config is None:
+        config = Config832()
+
+    path = Path(file_path)
+    folder_name = path.parent.name
+    file_name = path.stem
+    h5_file_name = file_name + ".h5"
+    scratch_path_tiff = folder_name + "/rec" + file_name + "/"
+    scratch_path_segment = folder_name + "/seg" + file_name + "/"
+
+    # ── STEP 1: Transfer raw data to ALCF ────────────────────────────────────
+    logger.info("Initializing Globus Transfer Controller.")
+    transfer_controller = get_transfer_controller(
+        transfer_type=CopyMethod.GLOBUS,
+        config=config
+    )
+
+    data832_raw_path = f"{folder_name}/{h5_file_name}"
+    logger.info(f"Transferring raw data to ALCF: {data832_raw_path}")
+    alcf_transfer_success = transfer_controller.copy(
+        file_path=data832_raw_path,
+        source=config.data832_raw,
+        destination=config.alcf832_synaps_raw
+    )
+
+    if not alcf_transfer_success:
+        logger.error("Transfer to ALCF failed. Aborting flow.")
+        raise ValueError("Transfer to ALCF Failed")
+
+    logger.info("Transfer to ALCF successful.")
+
+    # ── STEP 2: Multinode reconstruction (sync) ───────────────────────────────
+    logger.info("Initializing ALCF Tomography HPC Controller.")
+    tomography_controller = get_controller(
+        hpc_type=HPC.ALCF,
+        config=config
+    )
+
+    logger.info(f"Starting multinode reconstruction for {file_path=}")
+    alcf_reconstruction_success = tomography_controller.reconstruct(file_path=file_path)
+
+    if not alcf_reconstruction_success:
+        logger.error("Reconstruction failed. Aborting segmentation steps.")
+        raise ValueError("Reconstruction at ALCF Failed")
+
+    logger.info("Reconstruction successful.")
+
+    # ── STEP 3: Transfer reconstructed TIFFs back to data832 ─────────────────
+    logger.info(f"Transferring TIFFs from ALCF to data832: {scratch_path_tiff}")
+    data832_tiff_transfer_success = transfer_controller.copy(
+        file_path=scratch_path_tiff,
+        source=config.alcf832_synaps_recon,
+        destination=config.data832_scratch
+    )
+    logger.info(f"TIFF transfer to data832: {data832_tiff_transfer_success}")
+
+    # ── STEP 4: SAM3 / DINO / Cellpose concurrently ──────────────────────────
+    logger.info("Submitting SAM3, DINO, and Cellpose segmentation tasks concurrently.")
+
+    sam3_future = alcf_segmentation_task.submit(
+        recon_folder_path=scratch_path_tiff, config=config
+    )
+    dino_future = alcf_segmentation_dino_task.submit(
+        recon_folder_path=scratch_path_tiff, config=config
+    )
+    cellpose_future = alcf_segmentation_cellpose_task.submit(
+        recon_folder_path=scratch_path_tiff, config=config
+    )
+
+    sam3_success = sam3_future.result()
+    dino_success = dino_future.result()
+    cellpose_success = cellpose_future.result()
+
+    logger.info(f"Segmentation results — SAM3: {sam3_success}, DINO: {dino_success}, Cellpose: {cellpose_success}")
+
+    any_seg_success = any([sam3_success, dino_success, cellpose_success])
+
+    # ── STEP 5: Transfer segmentation outputs to data832 ─────────────────────
+    segment_transfer_success = False
+    if any_seg_success:
+        logger.info(f"Transferring segmentation outputs from ALCF to data832: {scratch_path_segment}")
+        segment_transfer_success = transfer_controller.copy(
+            file_path=scratch_path_segment,
+            source=config.alcf832_synaps_segment,
+            destination=config.data832_scratch
+        )
+        logger.info(f"Segmentation transfer to data832: {segment_transfer_success}")
+
+    # ── STEP 6: Pruning ───────────────────────────────────────────────────────
+    logger.info("Scheduling file pruning tasks.")
+    prune_controller = get_prune_controller(
+        prune_type=PruneMethod.GLOBUS,
+        config=config
+    )
+
+    prune_controller.prune(
+        file_path=data832_raw_path,
+        source_endpoint=config.alcf832_synaps_raw,
+        check_endpoint=None,
+        days_from_now=2.0
+    )
+
+    prune_controller.prune(
+        file_path=scratch_path_tiff,
+        source_endpoint=config.alcf832_synaps_recon,
+        check_endpoint=config.data832_scratch,
+        days_from_now=2.0
+    )
+
+    if any_seg_success:
+        prune_controller.prune(
+            file_path=scratch_path_segment,
+            source_endpoint=config.alcf832_synaps_segment,
+            check_endpoint=config.data832_scratch,
+            days_from_now=2.0
+        )
+
+    if data832_tiff_transfer_success:
+        prune_controller.prune(
+            file_path=scratch_path_tiff,
+            source_endpoint=config.data832_scratch,
+            check_endpoint=None,
+            days_from_now=30.0
+        )
+
+    if segment_transfer_success:
+        prune_controller.prune(
+            file_path=scratch_path_segment,
+            source_endpoint=config.data832_scratch,
+            check_endpoint=None,
+            days_from_now=30.0
+        )
+
+    # TODO: ingest to scicat
+
+    return alcf_reconstruction_success and any_seg_success
+
+
 @task(name="alcf_segmentation_task")
 def alcf_segmentation_task(
     recon_folder_path: str,
@@ -1055,6 +1520,36 @@ def alcf_segmentation_task(
     else:
         logger.info("Segmentation Successful.")
     return alcf_segmentation_success
+
+
+@task(name="alcf_segmentation_dino_task")
+def alcf_segmentation_dino_task(
+    recon_folder_path: str,
+    config: Optional[Config832] = None,
+) -> bool:
+    logger = get_run_logger()
+    if config is None:
+        config = Config832()
+    tomography_controller = get_controller(hpc_type=HPC.ALCF, config=config)
+    logger.info(f"Starting DINO segmentation task for {recon_folder_path=}")
+    success = tomography_controller.segmentation_dino(recon_folder_path=recon_folder_path)
+    logger.info(f"DINO segmentation {'successful' if success else 'failed'}.")
+    return success
+
+
+@task(name="alcf_segmentation_cellpose_task")
+def alcf_segmentation_cellpose_task(
+    recon_folder_path: str,
+    config: Optional[Config832] = None,
+) -> bool:
+    logger = get_run_logger()
+    if config is None:
+        config = Config832()
+    tomography_controller = get_controller(hpc_type=HPC.ALCF, config=config)
+    logger.info(f"Starting Cellpose segmentation task for {recon_folder_path=}")
+    success = tomography_controller.segmentation_cellpose(recon_folder_path=recon_folder_path)
+    logger.info(f"Cellpose segmentation {'successful' if success else 'failed'}.")
+    return success
 
 
 @flow(name="alcf_segmentation_integration_test", flow_run_name="alcf_segmentation_integration_test")
