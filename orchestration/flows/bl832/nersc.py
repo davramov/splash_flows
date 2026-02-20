@@ -935,7 +935,7 @@ exit $SEG_STATUS
 """
         
         try:
-            logger.info("Submitting segmentation job to Perlmutter (v4).")
+            logger.info("Submitting segmentation job to Perlmutter (v5).")
             perlmutter = self.client.compute(Machine.perlmutter)
             
             # Ensure directories exist
@@ -1230,7 +1230,7 @@ exit $SEG_STATUS
 
         CELLPOSE_DEFAULTS = {
             "defaults": True,
-            "num_nodes": 4,
+            "num_nodes": 10,
             "nproc_per_node": 4,
             "qos": "regular",
             "account": "amsc006",
@@ -1416,7 +1416,7 @@ exit $SEG_STATUS
 
         COMBINE_DEFAULTS = {
             "defaults": True,
-            "num_nodes": 1,
+            "num_nodes": 8,
             "qos": "regular",
             "account": "amsc006",
             "constraint": "cpu",
