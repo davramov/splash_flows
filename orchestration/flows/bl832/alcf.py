@@ -980,7 +980,7 @@ class ALCFTomographyHPCController(TomographyHPCController):
 
         endpoint_id = Variable.get(
             "alcf-globus-compute-seg-combine-uuid",
-            default="f36005c4-079c-4c61-b73e-48df92e8ef04",
+            default="4aae6420-3724-4df7-8884-81ff6c4c4381",
             _sync=True
         )
 
@@ -1039,7 +1039,7 @@ class ALCFTomographyHPCController(TomographyHPCController):
         tasks = [
             {
                 "name": "cellpose_dino",
-                "module": "src.combine_cellpose_dino",
+                "module": "src.combine_cellpose_dino",  # batch_process — handles flat masks ✓
                 "args": [
                     "--input-dir", input_dir,
                     "--instance-masks-dir", f"{cellpose_results}/instance_masks",
@@ -1049,7 +1049,7 @@ class ALCFTomographyHPCController(TomographyHPCController):
             },
             {
                 "name": "sam_dino",
-                "module": "src.combine_sam_dino",
+                "module": "src.combine_sam_dino",  # prompt-subdir script — handles SAM3 output ✓
                 "args": [
                     "--input-dir", input_dir,
                     "--instance-masks-dir", sam3_results,
@@ -1072,6 +1072,8 @@ class ALCFTomographyHPCController(TomographyHPCController):
                 stderr=subprocess.PIPE,
                 text=True,
             )
+            print(f"STDOUT [{combine_task['name']}]:\n{result.stdout}")
+            print(f"STDERR [{combine_task['name']}]:\n{result.stderr}")
 
             print(f"STDOUT [{combine_task['name']}]: {result.stdout[-2000:] if result.stdout else 'None'}")
             print(f"STDERR [{combine_task['name']}]: {result.stderr[-2000:] if result.stderr else 'None'}")
@@ -1710,6 +1712,21 @@ def alcf_segmentation_cellpose_task(
     return success
 
 
+@task(name="alcf_combine_segmentations_task")
+def alcf_combine_segmentations_task(
+    recon_folder_path: str,
+    config: Optional[Config832] = None,
+) -> bool:
+    logger = get_run_logger()
+    if config is None:
+        config = Config832()
+    tomography_controller = get_controller(hpc_type=HPC.ALCF, config=config)
+    logger.info(f"Starting combine segmentation task for {recon_folder_path=}")
+    success = tomography_controller.combine_segmentations(recon_folder_path=recon_folder_path)
+    logger.info(f"Combine segmentation {'successful' if success else 'failed'}.")
+    return success
+
+
 @flow(name="alcf_segmentation_integration_test", flow_run_name="alcf_segmentation_integration_test")
 def alcf_segmentation_integration_test() -> bool:
     """
@@ -1719,13 +1736,68 @@ def alcf_segmentation_integration_test() -> bool:
     """
     logger = get_run_logger()
     logger.info("Starting ALCF segmentation integration test.")
-    recon_folder_path = 'rec20211222_125057_petiole4'  # 'test'  #
+    recon_folder_path = 'DD-00842_hexemer/test_16' # 'rec20211222_125057_petiole4'  # 'test'  #
     flow_success = alcf_segmentation_task(
         recon_folder_path=recon_folder_path,
         config=Config832()
     )
     logger.info(f"Flow success: {flow_success}")
     return flow_success
+
+
+@flow(name="alcf_segmentation_cellpose_integration_test", flow_run_name="alcf_segmentation_cellpose_integration_test")
+def alcf_segmentation_cellpose_integration_test() -> bool:
+    """
+    Integration test for the ALCF Cellpose segmentation task.
+
+    :return: True if the segmentation task completed successfully, False otherwise.
+    """
+    logger = get_run_logger()
+    logger.info("Starting ALCF segmentation Cellpose integration test.")
+    recon_folder_path = 'DD-00842_hexemer/test_16' # rec20260212_133951_petiole30'  # 'test'  #
+    flow_success = alcf_segmentation_cellpose_task(
+        recon_folder_path=recon_folder_path,
+        config=Config832()
+    )
+    logger.info(f"Flow success: {flow_success}")
+    return flow_success
+
+
+@flow(name="alcf_segmentation_dino_integration_test", flow_run_name="alcf_segmentation_dino_integration_test")
+def alcf_segmentation_dino_integration_test() -> bool:
+    """
+    Integration test for the ALCF DINO segmentation task.
+
+    :return: True if the segmentation task completed successfully, False otherwise.
+    """
+    logger = get_run_logger()
+    logger.info("Starting ALCF segmentation DINO integration test.")
+    recon_folder_path = 'DD-00842_hexemer/test_16' # rec20260212_133951_petiole30'  # 'test'  #
+    flow_success = alcf_segmentation_dino_task(
+        recon_folder_path=recon_folder_path,
+        config=Config832()
+    )
+    logger.info(f"Flow success: {flow_success}")
+    return flow_success
+
+
+@flow(name="alcf_combine_segmentations_integration_test", flow_run_name="alcf_combine_segmentations_integration_test")
+def alcf_combine_segmentations_integration_test() -> bool:
+    """
+    Integration test for the ALCF combined segmentation task.
+
+    :return: True if the segmentation task completed successfully, False otherwise.
+    """
+    logger = get_run_logger()
+    logger.info("Starting ALCF segmentation combine integration test.")
+    recon_folder_path = 'DD-00842_hexemer/test_16' # rec20260212_133951_petiole30'  # 'test'  #
+    flow_success = alcf_combine_segmentations_task(
+        recon_folder_path=recon_folder_path,
+        config=Config832()
+    )
+    logger.info(f"Flow success: {flow_success}")
+    return flow_success
+
 
 
 @flow(name="alcf_reconstruction_integration_test", flow_run_name="alcf_reconstruction_integration_test")
@@ -1753,4 +1825,7 @@ def alcf_reconstruction_integration_test() -> bool:
 
 
 if __name__ == "__main__":
-    alcf_segmentation_integration_test()
+    # alcf_segmentation_integration_test()
+    # alcf_segmentation_dino_integration_test()
+    # alcf_segmentation_cellpose_integration_test()
+    alcf_combine_segmentations_integration_test()
