@@ -724,7 +724,7 @@ date
         
         # Paths
         # seg_scripts_dir = f"{cfs_path}/tomography_segmentation_scripts/inference_v4/forge_feb_seg_model_demo/"
-        seg_scripts_dir = f"{cfs_path}/tomography_segmentation_scripts/inference_v5_multiseg/forge_feb_seg_model_demo/"
+        seg_scripts_dir = f"{cfs_path}/tomography_segmentation_scripts/inference_latest/forge_feb_seg_model_demo/"
         checkpoints_dir = f"{cfs_path}/tomography_segmentation_scripts/sam3_finetune/sam3/"
 
         bpe_path = f"{checkpoints_dir}/bpe_simple_vocab_16e6.txt.gz"
@@ -744,10 +744,10 @@ date
         default_patch_size = 400
         default_confidence = [0.5]
         default_overlap = 0.25  # assuming this was your original default
-        default_qos = "demand"
+        default_qos = "regular"
         default_account = "als"
         default_constraint = "gpu"
-        default_checkpoint = "checkpoint_v5.pt"
+        default_checkpoint = "checkpoint_v6.pt"
         
         # Load options from Prefect variable
         try:
@@ -895,7 +895,7 @@ srun --ntasks-per-node=1 --gpus-per-task=4 \
     --batch-size "${{BATCH_SIZE}}" \
     --confidence {confidence_str} \
     --overlap-ratio {overlap} \
-    --prompts 'Cortex' 'Phloem Fibers' 'Air-based Pith cells' 'Water-based Pith cells' 'Xylem vessels' \
+    --prompts 'Cortex' 'Phloem Fibers' 'Phloem' 'Hydrated Xylem vessels' 'Air-based Pith cells' 'Water-based Pith cells' 'Dehydrated Xylem vessels' \
     --bpe-path "${{BPE_PATH}}" \
     --original-checkpoint "${{ORIG_CKPT}}" \
     --finetuned-checkpoint "${{FT_CKPT}}"
