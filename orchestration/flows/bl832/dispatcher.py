@@ -20,6 +20,9 @@ class FlowParameterMapper:
         "alcf_forge_recon_segment_flow/alcf_forge_recon_segment_flow": [
             "file_path",
             "config"],
+        "alcf_forge_recon_multisegment_flow/alcf_forge_recon_multisegment_flow": [
+            "file_path",
+            "config"],
         # From move.py
         "new_832_file_flow/new_file_832": [
             "file_path",
@@ -71,6 +74,7 @@ class DecisionFlowInputModel(BaseModel):
 def setup_decision_settings(
     alcf_recon: bool,
     alcf_forge_recon_segment: bool,
+    alcf_forge_recon_multisegment: bool,
     nersc_recon: bool,
     nersc_petiole_segment: bool,
     nersc_moon_segment: bool,
@@ -92,6 +96,7 @@ def setup_decision_settings(
         logger.info(f"Setting up decision settings: "
                     f"alcf_recon={alcf_recon}, "
                     f"alcf_forge_recon_segment={alcf_forge_recon_segment}, "
+                    f"alcf_forge_recon_multisegment={alcf_forge_recon_multisegment}, "
                     f"nersc_recon={nersc_recon}, "
                     f"nersc_petiole_segment={nersc_petiole_segment}, "
                     f"nersc_moon_segment={nersc_moon_segment}, "
@@ -100,6 +105,7 @@ def setup_decision_settings(
         settings = {
             "alcf_recon_flow/alcf_recon_flow": alcf_recon,
             "alcf_forge_recon_segment_flow/alcf_forge_recon_segment_flow": alcf_forge_recon_segment,
+            "alcf_forge_recon_multisegment_flow/alcf_forge_recon_multisegment_flow": alcf_forge_recon_multisegment,
             "nersc_recon_flow/nersc_recon_flow": nersc_recon,
             "nersc_petiole_segment_flow/nersc_petiole_segment_flow": nersc_petiole_segment,
             "nersc_moon_segment_flow/nersc_moon_segment_flow": nersc_moon_segment,
@@ -238,11 +244,11 @@ if __name__ == "__main__":
     """
     try:
         # Setup decision settings based on input parameters
-        setup_decision_settings(
-            alcf_recon=True,
-            nersc_recon=True,
-            new_file_832=True
-        )
+        setup_decision_settings(alcf_recon=True,
+                                alcf_forge_recon_segment=False,
+                                alcf_forge_recon_multisegment=False,
+                                nersc_recon=True,
+                                new_file_832=True)
         # Run the main decision flow with the specified parameters
         # asyncio.run(dispatcher(
         #     config={},  # PYTEST, ALCF, NERSC
