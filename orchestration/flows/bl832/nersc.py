@@ -262,7 +262,7 @@ date
         job_script = f"""#!/bin/bash
 #SBATCH -q regular # {qos}
 #SBATCH -A amsc006 # als
-#SBATCH --reservation=_CAP_reconstruction
+#SBATCH --reservation=INC0249856
 #SBATCH -C cpu
 #SBATCH --job-name=tomo_recon_{folder_name}_{file_name}
 #SBATCH --output={pscratch_path}/tomo_recon_logs/%x_%j.out
