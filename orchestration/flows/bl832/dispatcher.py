@@ -40,6 +40,10 @@ class FlowParameterMapper:
         "nersc_moon_segment_flow/nersc_moon_segment_flow": [
             "file_path",
             "num_nodes",
+            "config"],
+        "nersc_forge_recon_multisegment_flow/nersc_forge_recon_multisegment_flow": [
+            "file_path",
+            "num_nodes",
             "config"]
     }
 
@@ -220,6 +224,13 @@ async def dispatcher(
             "nersc_forge_recon_segment_flow/nersc_forge_recon_segment_flow", available_params)
         tasks.append(run_recon_flow_async(
             "nersc_forge_recon_segment_flow/nersc_forge_recon_segment_flow", nersc_forge_recon_segment_params))
+
+    if decision_settings.get("nersc_forge_recon_multisegment_flow/nersc_forge_recon_multisegment_flow"):
+        nersc_forge_recon_multisegment_params = FlowParameterMapper.get_flow_parameters(
+            "nersc_forge_recon_multisegment_flow/nersc_forge_recon_multisegment_flow", available_params)
+        tasks.append(run_recon_flow_async(
+            "nersc_forge_recon_multisegment_flow/nersc_forge_recon_multisegment_flow", nersc_forge_recon_multisegment_params))
+
     # Run ALCF and NERSC flows in parallel, if any
     if tasks:
         try:
@@ -248,6 +259,7 @@ if __name__ == "__main__":
             nersc_petiole_segment=False,
             nersc_moon_segment=False,
             nersc_forge_recon_segment=False,
+            nersc_forge_recon_multisegment=False,
             new_file_832=True
         )
         # Run the main decision flow with the specified parameters
