@@ -733,7 +733,7 @@ date
         
         input_dir = f"{pscratch_path}/8.3.2/scratch/{recon_folder_path}"
         output_folder = recon_folder_path.replace('/rec', '/seg')
-        output_dir = f"{pscratch_path}/8.3.2/scratch/{output_folder}"
+        output_dir = f"{pscratch_path}/8.3.2/scratch/{output_folder}/sam3"
         
         logger.info(f"Input directory: {input_dir}")
         logger.info(f"Output directory: {output_dir}")
