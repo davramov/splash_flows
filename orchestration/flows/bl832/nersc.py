@@ -256,13 +256,13 @@ date
 
 #SBATCH -q regular
 #SBATCH -A amsc006
-#SBATCH --reservation=_CAP_SYNAPYIDINOSAM
+#SBATCH --reservation=_CAP_MarchModCon_CPU
 
         # IMPORTANT: job script must be deindented to the leftmost column or it will fail immediately
         job_script = f"""#!/bin/bash
 #SBATCH -q regular # {qos}
 #SBATCH -A amsc006 # als
-#SBATCH --reservation=INC0249856
+#SBATCH --reservation=_CAP_March_ModCon_Dry_Run_CPU
 #SBATCH -C cpu
 #SBATCH --job-name=tomo_recon_{folder_name}_{file_name}
 #SBATCH --output={pscratch_path}/tomo_recon_logs/%x_%j.out
@@ -808,7 +808,7 @@ date
         job_script = f"""#!/bin/bash
 #SBATCH -q {qos}
 #SBATCH -A {account}
-#SBATCH --reservation=INC0249856
+#SBATCH --reservation=_CAP_March_ModCon_Dry_Run_GPU
 #SBATCH -N {num_nodes}
 #SBATCH -C {constraint} # gpu
 #SBATCH --job-name={job_name}
@@ -1080,7 +1080,7 @@ exit $SEG_STATUS
 #SBATCH -A {account}
 #SBATCH -N {num_nodes}
 #SBATCH -C {constraint}
-#SBATCH --reservation=INC0249856
+#SBATCH --reservation=_CAP_March_ModCon_Dry_Run_GPU
 #SBATCH --job-name={job_name}
 #SBATCH --time={walltime}
 #SBATCH --ntasks-per-node=1
@@ -1263,7 +1263,7 @@ exit $SEG_STATUS
 #SBATCH -A {account}
 #SBATCH -N {num_nodes}
 #SBATCH -C {constraint}
-#SBATCH --reservation=INC0249856
+#SBATCH --reservation=_CAP_March_ModCon_Dry_Run_GPU
 #SBATCH --job-name={job_name}
 #SBATCH --time={walltime}
 #SBATCH --ntasks-per-node=1
@@ -1447,7 +1447,7 @@ exit $SEG_STATUS
 #SBATCH -A {account}
 #SBATCH -N {num_nodes}
 #SBATCH -C {constraint}
-#SBATCH --reservation=INC0249856
+#SBATCH --reservation=_CAP_March_ModCon_Dry_Run_CPU
 #SBATCH --job-name={job_name}
 #SBATCH --time={walltime}
 #SBATCH --ntasks=1
