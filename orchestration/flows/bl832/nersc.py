@@ -1230,7 +1230,7 @@ exit $SEG_STATUS
 
         CELLPOSE_DEFAULTS = {
             "defaults": True,
-            "num_nodes": 10,
+            "num_nodes": 16,
             "nproc_per_node": 4,
             "qos": "regular",
             "account": "amsc006",
