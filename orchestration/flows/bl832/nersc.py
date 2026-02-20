@@ -1400,7 +1400,7 @@ exit $SEG_STATUS
         cfs_path = "/global/cfs/cdirs/als/data_mover/8.3.2"
         conda_env_path = f"{cfs_path}/envs/dino_demo"
 
-        seg_scripts_dir = f"{cfs_path}/tomography_segmentation_scripts/inference_v5/forge_feb_seg_model_demo"
+        seg_scripts_dir = f"{cfs_path}/tomography_segmentation_scripts/inference_v5_multiseg/forge_feb_seg_model_demo"
 
         seg_folder = recon_folder_path.replace("/rec", "/seg")
         input_dir = f"{pscratch_path}/8.3.2/scratch/{recon_folder_path}"
