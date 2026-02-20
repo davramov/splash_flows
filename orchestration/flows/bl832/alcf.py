@@ -428,7 +428,7 @@ class ALCFTomographyHPCController(TomographyHPCController):
             _sync=True
         )
 
-        segmentation_module = "src.inference_cellpose_v1"
+        segmentation_module = "src.inference_cellpose_v3"  # v1
         workdir = f"{self.allocation_root}/segmentation/scripts/inference_v5/forge_feb_seg_model_demo"
 
         with Executor(endpoint_id=endpoint_id, client=gcc) as fxe:
@@ -849,7 +849,7 @@ class ALCFTomographyHPCController(TomographyHPCController):
         save_overlay: bool = True,
         nproc_per_node: int = 4,
         workdir: str = "/eagle/SYNAPS-I/segmentation/scripts/inference_v5/forge_feb_seg_model_demo",
-        script_module: str = "src.inference_cellpose_v1",
+        script_module: str = "src.inference_cellpose_v3",  # v1
     ) -> str:
         """
         Wrapper function to run segmentation using the Cellpose model on ALCF.
@@ -1736,7 +1736,7 @@ def alcf_segmentation_integration_test() -> bool:
     """
     logger = get_run_logger()
     logger.info("Starting ALCF segmentation integration test.")
-    recon_folder_path = 'DD-00842_hexemer/test_16' # 'rec20211222_125057_petiole4'  # 'test'  #
+    recon_folder_path = 'DD-00842_hexemer/test_16'  # 'rec20211222_125057_petiole4'  # 'test'  #
     flow_success = alcf_segmentation_task(
         recon_folder_path=recon_folder_path,
         config=Config832()
@@ -1754,7 +1754,7 @@ def alcf_segmentation_cellpose_integration_test() -> bool:
     """
     logger = get_run_logger()
     logger.info("Starting ALCF segmentation Cellpose integration test.")
-    recon_folder_path = 'DD-00842_hexemer/test_16' # rec20260212_133951_petiole30'  # 'test'  #
+    recon_folder_path = 'DD-00842_hexemer/test_16'  # 'rec20260212_133951_petiole30'  #
     flow_success = alcf_segmentation_cellpose_task(
         recon_folder_path=recon_folder_path,
         config=Config832()
@@ -1772,7 +1772,7 @@ def alcf_segmentation_dino_integration_test() -> bool:
     """
     logger = get_run_logger()
     logger.info("Starting ALCF segmentation DINO integration test.")
-    recon_folder_path = 'DD-00842_hexemer/test_16' # rec20260212_133951_petiole30'  # 'test'  #
+    recon_folder_path = 'DD-00842_hexemer/test_16'  # rec20260212_133951_petiole30'  # 'test'  #
     flow_success = alcf_segmentation_dino_task(
         recon_folder_path=recon_folder_path,
         config=Config832()
@@ -1790,14 +1790,13 @@ def alcf_combine_segmentations_integration_test() -> bool:
     """
     logger = get_run_logger()
     logger.info("Starting ALCF segmentation combine integration test.")
-    recon_folder_path = 'DD-00842_hexemer/test_16' # rec20260212_133951_petiole30'  # 'test'  #
+    recon_folder_path = 'DD-00842_hexemer/test_16'  # rec20260212_133951_petiole30'  # 'test'  #
     flow_success = alcf_combine_segmentations_task(
         recon_folder_path=recon_folder_path,
         config=Config832()
     )
     logger.info(f"Flow success: {flow_success}")
     return flow_success
-
 
 
 @flow(name="alcf_reconstruction_integration_test", flow_run_name="alcf_reconstruction_integration_test")
@@ -1827,5 +1826,5 @@ def alcf_reconstruction_integration_test() -> bool:
 if __name__ == "__main__":
     # alcf_segmentation_integration_test()
     # alcf_segmentation_dino_integration_test()
-    # alcf_segmentation_cellpose_integration_test()
-    alcf_combine_segmentations_integration_test()
+    alcf_segmentation_cellpose_integration_test()
+    # alcf_combine_segmentations_integration_test()
