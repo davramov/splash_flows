@@ -2460,51 +2460,81 @@ def nersc_forge_recon_multisegment_flow(
         recon_folder_path=scratch_path_tiff, config=config
     )
 
+    # ── STEP 4: Transfer each model's output as it completes ─────────────────
     sam3_result = sam3_future.result()
-    dino_success = dino_future.result()
-    cellpose_success = cellpose_future.result()
-
-    # nersc_segmentation_task (SAM3) returns a dict
-    if isinstance(sam3_result, dict):
-        sam3_success = sam3_result.get('success', False)
-    else:
-        sam3_success = bool(sam3_result)
-
-    logger.info(
-        f"Segmentation results — SAM3: {sam3_success}, DINO: {dino_success}, Cellpose: {cellpose_success}"
-    )
-
-    any_seg_success = any([sam3_success, dino_success, cellpose_success])
-
-    # ── STEP 4: Combine (sync, after all three complete) ─────────────────────
-    if dino_success and (sam3_success or cellpose_success):
-        logger.info("Running segmentation combination (SAM3+DINO and Cellpose+DINO).")
-        combine_success = controller.combine_segmentations(
-            recon_folder_path=scratch_path_tiff
-        )
-        logger.info(f"Combination result: {combine_success}")
-    else:
-        logger.warning("Skipping combination: requires DINO plus at least one of SAM3/Cellpose.")
-
-    # ── STEP 5: Transfer segmentation outputs to data832 ─────────────────────
-    if any_seg_success:
-        logger.info("Transferring segmentation outputs from NERSC pscratch to data832")
+    sam3_success = sam3_result.get('success', False) if isinstance(sam3_result, dict) else bool(sam3_result)
+    logger.info(f"SAM3 segmentation result: {sam3_success}")
+    if sam3_success:
+        logger.info("Transferring SAM3 segmentation outputs to data832")
+        sam3_segment_path = f"{folder_name}/seg{file_name}/sam3"
         try:
-            data832_segment_transfer_success = transfer_controller.copy(
-                file_path=scratch_path_segment,
+            data832_sam3_transfer_success = transfer_controller.copy(
+                file_path=sam3_segment_path,
                 source=config.nersc832_alsdev_pscratch_scratch,
                 destination=config.data832_scratch
             )
-            logger.info(f"Transfer segmented data to data832 success: {data832_segment_transfer_success}")
+            logger.info(f"SAM3 transfer to data832 success: {data832_sam3_transfer_success}")
         except Exception as e:
-            logger.error(f"Failed to transfer segmented data to data832: {e}")
-            data832_segment_transfer_success = False
+            logger.error(f"Failed to transfer SAM3 outputs to data832: {e}")
+
+    dino_success = dino_future.result()
+    logger.info(f"DINO segmentation result: {dino_success}")
+    if dino_success:
+        logger.info("Transferring DINO segmentation outputs to data832")
+        dino_segment_path = f"{folder_name}/seg{file_name}/dino"
+        try:
+            data832_dino_transfer_success = transfer_controller.copy(
+                file_path=dino_segment_path,
+                source=config.nersc832_alsdev_pscratch_scratch,
+                destination=config.data832_scratch
+            )
+            logger.info(f"DINO transfer to data832 success: {data832_dino_transfer_success}")
+        except Exception as e:
+            logger.error(f"Failed to transfer DINO outputs to data832: {e}")
+
+    cellpose_success = cellpose_future.result()
+    logger.info(f"Cellpose segmentation result: {cellpose_success}")
+    if cellpose_success:
+        logger.info("Transferring Cellpose segmentation outputs to data832")
+        cellpose_segment_path = f"{folder_name}/seg{file_name}/cellpose"
+        try:
+            data832_cellpose_transfer_success = transfer_controller.copy(
+                file_path=cellpose_segment_path,
+                source=config.nersc832_alsdev_pscratch_scratch,
+                destination=config.data832_scratch
+            )
+            logger.info(f"Cellpose transfer to data832 success: {data832_cellpose_transfer_success}")
+        except Exception as e:
+            logger.error(f"Failed to transfer Cellpose outputs to data832: {e}")
+
+    any_seg_success = any([sam3_success, dino_success, cellpose_success])
+
+    logger.info(f"Segmentation results — SAM3: {sam3_success}, DINO: {dino_success}, Cellpose: {cellpose_success}")
+
+    # ── STEP 5: Combine (after all three complete) ────────────────────────────
+    if dino_success and (sam3_success or cellpose_success):
+        logger.info("Running segmentation combination (SAM3+DINO and Cellpose+DINO).")
+        combine_success = controller.combine_segmentations(recon_folder_path=scratch_path_tiff)
+        logger.info(f"Combination result: {combine_success}")
+        if combine_success:
+            logger.info("Transferring combined segmentation outputs to data832")
+            combined_segment_path = f"{folder_name}/seg{file_name}/combined"
+            try:
+                data832_combined_transfer_success = transfer_controller.copy(
+                    file_path=combined_segment_path,
+                    source=config.nersc832_alsdev_pscratch_scratch,
+                    destination=config.data832_scratch
+                )
+                logger.info(f"Combined transfer to data832 success: {data832_combined_transfer_success}")
+            except Exception as e:
+                logger.error(f"Failed to transfer combined outputs to data832: {e}")
+    else:
+        logger.warning("Skipping combination: requires DINO plus at least one of SAM3/Cellpose.")
 
     # ── STEP 6: Pruning ───────────────────────────────────────────────────────
     logger.info("Scheduling file pruning tasks.")
     prune_controller = get_prune_controller(prune_type=PruneMethod.GLOBUS, config=config)
 
-    logger.info("Scheduling pruning of NERSC pscratch raw data.")
     try:
         prune_controller.prune(
             file_path=f"{folder_name}/{path.name}",
@@ -2516,7 +2546,6 @@ def nersc_forge_recon_multisegment_flow(
         logger.warning(f"Failed to schedule raw data pruning: {e}")
 
     if nersc_reconstruction_success:
-        logger.info("Scheduling pruning of NERSC pscratch reconstruction data.")
         try:
             prune_controller.prune(
                 file_path=scratch_path_tiff,
@@ -2528,19 +2557,21 @@ def nersc_forge_recon_multisegment_flow(
             logger.warning(f"Failed to schedule reconstruction data pruning: {e}")
 
     if any_seg_success:
-        logger.info("Scheduling pruning of NERSC pscratch segmentation data.")
         try:
             prune_controller.prune(
                 file_path=scratch_path_segment,
                 source_endpoint=config.nersc832_alsdev_pscratch_scratch,
-                check_endpoint=config.data832_scratch if data832_segment_transfer_success else None,
+                check_endpoint=config.data832_scratch if any([
+                    data832_sam3_transfer_success,
+                    data832_dino_transfer_success,
+                    data832_cellpose_transfer_success
+                ]) else None,
                 days_from_now=1.0
             )
         except Exception as e:
             logger.warning(f"Failed to schedule segmentation data pruning: {e}")
 
     if data832_tiff_transfer_success:
-        logger.info("Scheduling pruning of data832 scratch reconstruction TIFF data.")
         try:
             prune_controller.prune(
                 file_path=scratch_path_tiff,
@@ -2551,8 +2582,8 @@ def nersc_forge_recon_multisegment_flow(
         except Exception as e:
             logger.warning(f"Failed to schedule data832 tiff pruning: {e}")
 
-    if data832_segment_transfer_success:
-        logger.info("Scheduling pruning of data832 scratch segmentation data.")
+    if any([data832_sam3_transfer_success, data832_dino_transfer_success,
+            data832_cellpose_transfer_success, data832_combined_transfer_success]):
         try:
             prune_controller.prune(
                 file_path=scratch_path_segment,
@@ -2563,8 +2594,6 @@ def nersc_forge_recon_multisegment_flow(
         except Exception as e:
             logger.warning(f"Failed to schedule data832 segment pruning: {e}")
 
-    # TODO: ingest to scicat
-
     if nersc_reconstruction_success and any_seg_success:
         logger.info("NERSC reconstruction + multi-segmentation flow completed successfully.")
         return True
@@ -2574,6 +2603,121 @@ def nersc_forge_recon_multisegment_flow(
             f"sam3={sam3_success}, dino={dino_success}, cellpose={cellpose_success}"
         )
         return False
+
+    # sam3_result = sam3_future.result()
+    # dino_success = dino_future.result()
+    # cellpose_success = cellpose_future.result()
+
+    # # nersc_segmentation_task (SAM3) returns a dict
+    # if isinstance(sam3_result, dict):
+    #     sam3_success = sam3_result.get('success', False)
+    # else:
+    #     sam3_success = bool(sam3_result)
+
+    # logger.info(
+    #     f"Segmentation results — SAM3: {sam3_success}, DINO: {dino_success}, Cellpose: {cellpose_success}"
+    # )
+
+    # any_seg_success = any([sam3_success, dino_success, cellpose_success])
+
+    # # ── STEP 4: Combine (sync, after all three complete) ─────────────────────
+    # if dino_success and (sam3_success or cellpose_success):
+    #     logger.info("Running segmentation combination (SAM3+DINO and Cellpose+DINO).")
+    #     combine_success = controller.combine_segmentations(
+    #         recon_folder_path=scratch_path_tiff
+    #     )
+    #     logger.info(f"Combination result: {combine_success}")
+    # else:
+    #     logger.warning("Skipping combination: requires DINO plus at least one of SAM3/Cellpose.")
+
+    # # ── STEP 5: Transfer segmentation outputs to data832 ─────────────────────
+    # if any_seg_success:
+    #     logger.info("Transferring segmentation outputs from NERSC pscratch to data832")
+    #     try:
+    #         data832_segment_transfer_success = transfer_controller.copy(
+    #             file_path=scratch_path_segment,
+    #             source=config.nersc832_alsdev_pscratch_scratch,
+    #             destination=config.data832_scratch
+    #         )
+    #         logger.info(f"Transfer segmented data to data832 success: {data832_segment_transfer_success}")
+    #     except Exception as e:
+    #         logger.error(f"Failed to transfer segmented data to data832: {e}")
+    #         data832_segment_transfer_success = False
+
+    # # ── STEP 6: Pruning ───────────────────────────────────────────────────────
+    # logger.info("Scheduling file pruning tasks.")
+    # prune_controller = get_prune_controller(prune_type=PruneMethod.GLOBUS, config=config)
+
+    # logger.info("Scheduling pruning of NERSC pscratch raw data.")
+    # try:
+    #     prune_controller.prune(
+    #         file_path=f"{folder_name}/{path.name}",
+    #         source_endpoint=config.nersc832_alsdev_pscratch_raw,
+    #         check_endpoint=None,
+    #         days_from_now=1.0
+    #     )
+    # except Exception as e:
+    #     logger.warning(f"Failed to schedule raw data pruning: {e}")
+
+    # if nersc_reconstruction_success:
+    #     logger.info("Scheduling pruning of NERSC pscratch reconstruction data.")
+    #     try:
+    #         prune_controller.prune(
+    #             file_path=scratch_path_tiff,
+    #             source_endpoint=config.nersc832_alsdev_pscratch_scratch,
+    #             check_endpoint=config.data832_scratch if data832_tiff_transfer_success else None,
+    #             days_from_now=1.0
+    #         )
+    #     except Exception as e:
+    #         logger.warning(f"Failed to schedule reconstruction data pruning: {e}")
+
+    # if any_seg_success:
+    #     logger.info("Scheduling pruning of NERSC pscratch segmentation data.")
+    #     try:
+    #         prune_controller.prune(
+    #             file_path=scratch_path_segment,
+    #             source_endpoint=config.nersc832_alsdev_pscratch_scratch,
+    #             check_endpoint=config.data832_scratch if data832_segment_transfer_success else None,
+    #             days_from_now=1.0
+    #         )
+    #     except Exception as e:
+    #         logger.warning(f"Failed to schedule segmentation data pruning: {e}")
+
+    # if data832_tiff_transfer_success:
+    #     logger.info("Scheduling pruning of data832 scratch reconstruction TIFF data.")
+    #     try:
+    #         prune_controller.prune(
+    #             file_path=scratch_path_tiff,
+    #             source_endpoint=config.data832_scratch,
+    #             check_endpoint=None,
+    #             days_from_now=30.0
+    #         )
+    #     except Exception as e:
+    #         logger.warning(f"Failed to schedule data832 tiff pruning: {e}")
+
+    # if data832_segment_transfer_success:
+    #     logger.info("Scheduling pruning of data832 scratch segmentation data.")
+    #     try:
+    #         prune_controller.prune(
+    #             file_path=scratch_path_segment,
+    #             source_endpoint=config.data832_scratch,
+    #             check_endpoint=None,
+    #             days_from_now=30.0
+    #         )
+    #     except Exception as e:
+    #         logger.warning(f"Failed to schedule data832 segment pruning: {e}")
+
+    # # TODO: ingest to scicat
+
+    # if nersc_reconstruction_success and any_seg_success:
+    #     logger.info("NERSC reconstruction + multi-segmentation flow completed successfully.")
+    #     return True
+    # else:
+    #     logger.warning(
+    #         f"Flow completed with issues: recon={nersc_reconstruction_success}, "
+    #         f"sam3={sam3_success}, dino={dino_success}, cellpose={cellpose_success}"
+    #     )
+    #     return False
 
 
 @flow(name="nersc_streaming_flow", on_cancellation=[cancellation_hook])
