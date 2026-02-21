@@ -1570,7 +1570,6 @@ exit $EXTRACT_STATUS
         seg_base = f"{pscratch_path}/8.3.2/scratch/{seg_folder}"
 
         sam3_results = f"{seg_base}/sam3"
-        # cellpose_results = f"{seg_base}/cellpose"
         dino_results = f"{seg_base}/dino"
         combined_output = f"{seg_base}/combined"
 
@@ -1630,7 +1629,6 @@ echo "SEGMENTATION COMBINATION STARTED: $(date)"
 echo "============================================================"
 echo "Input:    {input_dir}"
 echo "SAM3:     {sam3_results}"
-# echo "Cellpose: {cellpose_results}"
 echo "DINO:     {dino_results}"
 echo "Output:   {combined_output}"
 echo "============================================================"
@@ -1638,16 +1636,6 @@ echo "============================================================"
 START_TIME=$(date +%s)
 
 cd {seg_scripts_dir}
-
-# echo "--- Running Cellpose + DINO combination ---"
-# python -m src.combine_cellpose_dino \\
-#     --input-dir "{input_dir}" \\
-#     --instance-masks-dir "{cellpose_results}/instance_masks" \\
-#     --semantic-masks-dir "{dino_results}/semantic_masks" \\
-#     --output-dir "{combined_output}/cellpose_dino"
-
-# CELLPOSE_DINO_STATUS=$?
-# echo "Cellpose+DINO exit status: $CELLPOSE_DINO_STATUS"
 
 echo "--- Running SAM3 + DINO combination ---"
 python -m src.combine_sam_dino_v2 \\
