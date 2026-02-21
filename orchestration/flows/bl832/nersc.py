@@ -1380,6 +1380,169 @@ exit $SEG_STATUS
                     return False
             else:
                 return False
+            
+    def seg_extract_regions(
+        self,
+        recon_folder_path: str = "",
+    ) -> bool:
+        """
+        Extract Hydrated and Dehydrated Xylem regions using DINO semantic masks
+        and SAM3 instance masks at NERSC Perlmutter via SFAPI Slurm job.
+
+        :param recon_folder_path: Relative path to the reconstructed data folder,
+            e.g. 'folder_name/recYYYYMMDD_hhmmss_scanname/'
+        :return: True if the job completed successfully, False otherwise.
+        """
+        logger.info("Starting NERSC region extraction process.")
+
+        user = self.client.user()
+        pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
+        cfs_path = "/global/cfs/cdirs/als/data_mover/8.3.2"
+        conda_env_path = f"{cfs_path}/envs/dino_demo"
+
+        seg_scripts_dir = f"{cfs_path}/tomography_segmentation_scripts/inference_latest/forge_feb_seg_model_demo"
+
+        seg_folder = recon_folder_path.replace("/rec", "/seg")
+        input_dir = f"{pscratch_path}/8.3.2/scratch/{recon_folder_path}"
+        seg_base = f"{pscratch_path}/8.3.2/scratch/{seg_folder}"
+
+        sam3_results = f"{seg_base}/sam3"
+        dino_results = f"{seg_base}/dino"
+        combined_output = f"{seg_base}/combined"
+        extract_output = f"{combined_output}/extract_regions"
+
+        logger.info(f"Extract regions input dir:  {input_dir}")
+        logger.info(f"Extract regions output dir: {extract_output}")
+
+        EXTRACT_DEFAULTS = {
+            "defaults": True,
+            "num_nodes": 8,
+            "qos": "regular",
+            "account": "amsc006",
+            "constraint": "cpu",
+            "walltime": "01:00:00",
+            "dilate_px": 5,
+            "xylem_mode": "all",
+        }
+        try:
+            seg_options = Variable.get("nersc-extract-regions-options", default={"defaults": True}, _sync=True)
+            if isinstance(seg_options, str):
+                import json
+                seg_options = json.loads(seg_options)
+        except Exception as e:
+            logger.warning(f"Could not load nersc-extract-regions-options: {e}. Using defaults.")
+            seg_options = {"defaults": True}
+
+        use_defaults = seg_options.get("defaults", True)
+        opts = EXTRACT_DEFAULTS if use_defaults else {k: seg_options.get(k, v) for k, v in EXTRACT_DEFAULTS.items()}
+
+        num_nodes = opts["num_nodes"]
+        qos = opts["qos"]
+        account = opts["account"]
+        constraint = opts["constraint"]
+        walltime = opts["walltime"]
+        dilate_px = opts["dilate_px"]
+        xylem_mode = opts["xylem_mode"]
+
+        job_name = f"extract_{Path(recon_folder_path).name}"
+
+        job_script = f"""#!/bin/bash
+#SBATCH -q {qos}
+#SBATCH -A {account}
+#SBATCH -N {num_nodes}
+#SBATCH -C {constraint}
+#SBATCH --reservation=_CAP_March_ModCon_Dry_Run_CPU
+#SBATCH --job-name={job_name}
+#SBATCH --time={walltime}
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=128
+#SBATCH --output={pscratch_path}/tomo_seg_logs/%x_%j.out
+#SBATCH --error={pscratch_path}/tomo_seg_logs/%x_%j.err
+
+module load conda
+conda activate {conda_env_path}
+
+mkdir -p {extract_output}
+mkdir -p {pscratch_path}/tomo_seg_logs
+
+echo "============================================================"
+echo "REGION EXTRACTION STARTED: $(date)"
+echo "============================================================"
+echo "Input:        {input_dir}"
+echo "SAM3 masks:   {sam3_results}"
+echo "DINO masks:   {dino_results}/semantic_masks"
+echo "Output:       {extract_output}"
+echo "Xylem mode:   {xylem_mode}"
+echo "Dilate px:    {dilate_px}"
+echo "============================================================"
+
+START_TIME=$(date +%s)
+
+cd {seg_scripts_dir}
+
+# Extract Hydrated and Dehydrated Xylem regions
+python -m src.extract_region \\
+    --input-dir "{input_dir}" \\
+    --semantic-masks-dir "{dino_results}/semantic_masks" \\
+    --instance-masks-dir "{sam3_results}" \\
+    --output-dir "{extract_output}" \\
+    --xylem-mode {xylem_mode} \\
+    --dilate-px {dilate_px}
+
+EXTRACT_STATUS=$?
+
+END_TIME=$(date +%s)
+DURATION=$((END_TIME - START_TIME))
+MINUTES=$((DURATION / 60))
+SECONDS=$((DURATION % 60))
+
+echo ""
+echo "============================================================"
+echo "REGION EXTRACTION COMPLETED: $(date)"
+echo "============================================================"
+echo "Total time: ${{MINUTES}}m ${{SECONDS}}s (${{DURATION}}s)"
+echo "Exit status: $EXTRACT_STATUS"
+echo "============================================================"
+
+chmod -R 2775 {extract_output} 2>/dev/null || true
+
+exit $EXTRACT_STATUS
+"""
+        try:
+            logger.info("Submitting region extraction job to Perlmutter.")
+            perlmutter = self.client.compute(Machine.perlmutter)
+            job = perlmutter.submit_job(job_script)
+            logger.info(f"Submitted job ID: {job.jobid}")
+
+            try:
+                job.update()
+            except Exception as update_err:
+                logger.warning(f"Initial job update failed, continuing: {update_err}")
+
+            time.sleep(60)
+            logger.info(f"Job {job.jobid} current state: {job.state}")
+
+            job.complete()
+            logger.info("Region extraction job completed successfully.")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error during region extraction job submission or completion: {e}")
+            match = re.search(r"Job not found:\s*(\d+)", str(e))
+            if match:
+                jobid = match.group(1)
+                logger.info(f"Attempting to recover job {jobid}.")
+                try:
+                    job = self.client.compute(Machine.perlmutter).job(jobid=jobid)
+                    time.sleep(30)
+                    job.complete()
+                    logger.info("Region extraction job completed successfully after recovery.")
+                    return True
+                except Exception as recovery_err:
+                    logger.error(f"Failed to recover job {jobid}: {recovery_err}")
+                    return False
+            else:
+                return False
 
     def combine_segmentations(
         self,
@@ -2518,13 +2681,42 @@ def nersc_forge_recon_multisegment_flow(
 
     # ── STEP 5: Combine (after all three complete) ────────────────────────────
     # if dino_success and (sam3_success or cellpose_success):
+    # if dino_success and sam3_success:
+    #     logger.info("Running segmentation combination (SAM3+DINO and Cellpose+DINO).")
+    #     combine_success = controller.combine_segmentations(recon_folder_path=scratch_path_tiff)
+    #     logger.info(f"Combination result: {combine_success}")
+    #     if combine_success:
+    #         logger.info("Transferring combined segmentation outputs to data832")
+    #         combined_segment_path = f"{folder_name}/seg{file_name}/combined"
+    #         try:
+    #             data832_combined_transfer_success = transfer_controller.copy(
+    #                 file_path=combined_segment_path,
+    #                 source=config.nersc832_alsdev_pscratch_scratch,
+    #                 destination=config.data832_scratch
+    #             )
+    #             logger.info(f"Combined transfer to data832 success: {data832_combined_transfer_success}")
+    #         except Exception as e:
+    #             logger.error(f"Failed to transfer combined outputs to data832: {e}")
+    # else:
+    #     logger.warning("Skipping combination: requires DINO plus at least one of SAM3/Cellpose.")
+
+        # ── STEP 5: Combine + Extract Regions concurrently (after SAM3+DINO complete) ──
+    # if dino_success and (sam3_success or cellpose_success):
     if dino_success and sam3_success:
-        logger.info("Running segmentation combination (SAM3+DINO and Cellpose+DINO).")
-        combine_success = controller.combine_segmentations(recon_folder_path=scratch_path_tiff)
+        logger.info("Running segmentation combination and region extraction concurrently.")
+
+        combine_future = nersc_combine_segmentations_task.submit(
+            recon_folder_path=scratch_path_tiff, config=config
+        )
+        extract_future = nersc_extract_regions_task.submit(
+            recon_folder_path=scratch_path_tiff, config=config
+        )
+
+        combine_success = combine_future.result()
         logger.info(f"Combination result: {combine_success}")
         if combine_success:
             logger.info("Transferring combined segmentation outputs to data832")
-            combined_segment_path = f"{folder_name}/seg{file_name}/combined"
+            combined_segment_path = f"{folder_name}/seg{file_name}/combined/sam_dino"
             try:
                 data832_combined_transfer_success = transfer_controller.copy(
                     file_path=combined_segment_path,
@@ -2534,8 +2726,24 @@ def nersc_forge_recon_multisegment_flow(
                 logger.info(f"Combined transfer to data832 success: {data832_combined_transfer_success}")
             except Exception as e:
                 logger.error(f"Failed to transfer combined outputs to data832: {e}")
+
+        extract_success = extract_future.result()
+        logger.info(f"Region extraction result: {extract_success}")
+        if extract_success:
+            logger.info("Transferring extracted region outputs to data832")
+            extract_segment_path = f"{folder_name}/seg{file_name}/combined/extract_regions"
+            try:
+                data832_extract_transfer_success = transfer_controller.copy(
+                    file_path=extract_segment_path,
+                    source=config.nersc832_alsdev_pscratch_scratch,
+                    destination=config.data832_scratch
+                )
+                logger.info(f"Extract regions transfer to data832 success: {data832_extract_transfer_success}")
+            except Exception as e:
+                logger.error(f"Failed to transfer extracted region outputs to data832: {e}")
     else:
-        logger.warning("Skipping combination: requires DINO plus at least one of SAM3/Cellpose.")
+        logger.warning("Skipping combination and extraction: requires DINO plus SAM3.")
+
 
     # ── STEP 6: Pruning ───────────────────────────────────────────────────────
     logger.info("Scheduling file pruning tasks.")
@@ -2912,6 +3120,25 @@ def nersc_segmentation_cellpose_task(
         logger.error("Cellpose segmentation failed.")
     else:
         logger.info("Cellpose segmentation successful.")
+    return success
+
+
+@task(name="nersc_extract_regions_task")
+def nersc_extract_regions_task(
+    recon_folder_path: str,
+    config: Optional[Config832] = None,
+) -> bool:
+    logger = get_run_logger()
+    if config is None:
+        logger.info("No config provided, using default Config832.")
+        config = Config832()
+    tomography_controller = get_controller(hpc_type=HPC.NERSC, config=config)
+    logger.info(f"Starting NERSC region extraction task for {recon_folder_path=}")
+    success = tomography_controller.seg_extract_regions(recon_folder_path=recon_folder_path)
+    if not success:
+        logger.error("Region extraction failed.")
+    else:
+        logger.info("Region extraction successful.")
     return success
 
 
