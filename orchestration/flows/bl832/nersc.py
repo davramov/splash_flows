@@ -1046,7 +1046,7 @@ exit $SEG_STATUS
         DINO_DEFAULTS = {
             "defaults": True,
             "batch_size": 4,
-            "num_nodes": 4,
+            "num_nodes": 8,
             "nproc_per_node": 4,
             "qos": "regular",
             "account": "amsc006",
@@ -1407,7 +1407,7 @@ exit $SEG_STATUS
         seg_base = f"{pscratch_path}/8.3.2/scratch/{seg_folder}"
 
         sam3_results = f"{seg_base}/sam3"
-        cellpose_results = f"{seg_base}/cellpose"
+        # cellpose_results = f"{seg_base}/cellpose"
         dino_results = f"{seg_base}/dino"
         combined_output = f"{seg_base}/combined"
 
@@ -1458,7 +1458,7 @@ exit $SEG_STATUS
 module load conda
 conda activate {conda_env_path}
 
-mkdir -p {combined_output}/cellpose_dino
+# mkdir -p {combined_output}/cellpose_dino
 mkdir -p {combined_output}/sam_dino
 mkdir -p {pscratch_path}/tomo_seg_logs
 
@@ -1467,7 +1467,7 @@ echo "SEGMENTATION COMBINATION STARTED: $(date)"
 echo "============================================================"
 echo "Input:    {input_dir}"
 echo "SAM3:     {sam3_results}"
-echo "Cellpose: {cellpose_results}"
+# echo "Cellpose: {cellpose_results}"
 echo "DINO:     {dino_results}"
 echo "Output:   {combined_output}"
 echo "============================================================"
@@ -1476,15 +1476,15 @@ START_TIME=$(date +%s)
 
 cd {seg_scripts_dir}
 
-echo "--- Running Cellpose + DINO combination ---"
-python -m src.combine_cellpose_dino \\
-    --input-dir "{input_dir}" \\
-    --instance-masks-dir "{cellpose_results}/instance_masks" \\
-    --semantic-masks-dir "{dino_results}/semantic_masks" \\
-    --output-dir "{combined_output}/cellpose_dino"
+# echo "--- Running Cellpose + DINO combination ---"
+# python -m src.combine_cellpose_dino \\
+#     --input-dir "{input_dir}" \\
+#     --instance-masks-dir "{cellpose_results}/instance_masks" \\
+#     --semantic-masks-dir "{dino_results}/semantic_masks" \\
+#     --output-dir "{combined_output}/cellpose_dino"
 
-CELLPOSE_DINO_STATUS=$?
-echo "Cellpose+DINO exit status: $CELLPOSE_DINO_STATUS"
+# CELLPOSE_DINO_STATUS=$?
+# echo "Cellpose+DINO exit status: $CELLPOSE_DINO_STATUS"
 
 echo "--- Running SAM3 + DINO combination ---"
 python -m src.combine_sam_dino_v2 \\
@@ -1506,13 +1506,15 @@ echo "============================================================"
 echo "SEGMENTATION COMBINATION COMPLETED: $(date)"
 echo "============================================================"
 echo "Total time: ${{MINUTES}}m ${{SECONDS}}s (${{DURATION}}s)"
-echo "Cellpose+DINO status: $CELLPOSE_DINO_STATUS"
+# echo "Cellpose+DINO status: $CELLPOSE_DINO_STATUS"
 echo "SAM3+DINO status:     $SAM_DINO_STATUS"
 echo "============================================================"
 
 chmod -R 2775 {combined_output} 2>/dev/null || true
 
-if [ $CELLPOSE_DINO_STATUS -ne 0 ] || [ $SAM_DINO_STATUS -ne 0 ]; then
+# if [ $CELLPOSE_DINO_STATUS -ne 0 ] || [ $SAM_DINO_STATUS -ne 0 ]; then
+if [ $SAM_DINO_STATUS -ne 0 ]; then
+
     exit 1
 fi
 exit 0
@@ -2456,9 +2458,9 @@ def nersc_forge_recon_multisegment_flow(
     dino_future = nersc_segmentation_dino_task.submit(
         recon_folder_path=scratch_path_tiff, config=config
     )
-    cellpose_future = nersc_segmentation_cellpose_task.submit(
-        recon_folder_path=scratch_path_tiff, config=config
-    )
+    # cellpose_future = nersc_segmentation_cellpose_task.submit(
+    #     recon_folder_path=scratch_path_tiff, config=config
+    # )
 
     # ── STEP 4: Transfer each model's output as it completes ─────────────────
     sam3_result = sam3_future.result()
@@ -2492,27 +2494,31 @@ def nersc_forge_recon_multisegment_flow(
         except Exception as e:
             logger.error(f"Failed to transfer DINO outputs to data832: {e}")
 
-    cellpose_success = cellpose_future.result()
-    logger.info(f"Cellpose segmentation result: {cellpose_success}")
-    if cellpose_success:
-        logger.info("Transferring Cellpose segmentation outputs to data832")
-        cellpose_segment_path = f"{folder_name}/seg{file_name}/cellpose"
-        try:
-            data832_cellpose_transfer_success = transfer_controller.copy(
-                file_path=cellpose_segment_path,
-                source=config.nersc832_alsdev_pscratch_scratch,
-                destination=config.data832_scratch
-            )
-            logger.info(f"Cellpose transfer to data832 success: {data832_cellpose_transfer_success}")
-        except Exception as e:
-            logger.error(f"Failed to transfer Cellpose outputs to data832: {e}")
+    # cellpose_success = cellpose_future.result()
+    # logger.info(f"Cellpose segmentation result: {cellpose_success}")
+    # if cellpose_success:
+    #     logger.info("Transferring Cellpose segmentation outputs to data832")
+    #     cellpose_segment_path = f"{folder_name}/seg{file_name}/cellpose"
+    #     try:
+    #         data832_cellpose_transfer_success = transfer_controller.copy(
+    #             file_path=cellpose_segment_path,
+    #             source=config.nersc832_alsdev_pscratch_scratch,
+    #             destination=config.data832_scratch
+    #         )
+    #         logger.info(f"Cellpose transfer to data832 success: {data832_cellpose_transfer_success}")
+    #     except Exception as e:
+    #         logger.error(f"Failed to transfer Cellpose outputs to data832: {e}")
 
-    any_seg_success = any([sam3_success, dino_success, cellpose_success])
+    # any_seg_success = any([sam3_success, dino_success, cellpose_success])
+    any_seg_success = any([sam3_success, dino_success])
 
-    logger.info(f"Segmentation results — SAM3: {sam3_success}, DINO: {dino_success}, Cellpose: {cellpose_success}")
+
+    # logger.info(f"Segmentation results — SAM3: {sam3_success}, DINO: {dino_success}, Cellpose: {cellpose_success}")
+    logger.info(f"Segmentation results — SAM3: {sam3_success}, DINO: {dino_success}")
 
     # ── STEP 5: Combine (after all three complete) ────────────────────────────
-    if dino_success and (sam3_success or cellpose_success):
+    # if dino_success and (sam3_success or cellpose_success):
+    if dino_success and sam3_success:
         logger.info("Running segmentation combination (SAM3+DINO and Cellpose+DINO).")
         combine_success = controller.combine_segmentations(recon_folder_path=scratch_path_tiff)
         logger.info(f"Combination result: {combine_success}")
@@ -2564,7 +2570,7 @@ def nersc_forge_recon_multisegment_flow(
                 check_endpoint=config.data832_scratch if any([
                     data832_sam3_transfer_success,
                     data832_dino_transfer_success,
-                    data832_cellpose_transfer_success
+                    # data832_cellpose_transfer_success
                 ]) else None,
                 days_from_now=1.0
             )
@@ -2582,8 +2588,10 @@ def nersc_forge_recon_multisegment_flow(
         except Exception as e:
             logger.warning(f"Failed to schedule data832 tiff pruning: {e}")
 
-    if any([data832_sam3_transfer_success, data832_dino_transfer_success,
-            data832_cellpose_transfer_success, data832_combined_transfer_success]):
+    if any([data832_sam3_transfer_success,
+            data832_dino_transfer_success,
+            # data832_cellpose_transfer_success,
+            data832_combined_transfer_success]):
         try:
             prune_controller.prune(
                 file_path=scratch_path_segment,
@@ -2600,7 +2608,9 @@ def nersc_forge_recon_multisegment_flow(
     else:
         logger.warning(
             f"Flow completed with issues: recon={nersc_reconstruction_success}, "
-            f"sam3={sam3_success}, dino={dino_success}, cellpose={cellpose_success}"
+            # f"sam3={sam3_success}, dino={dino_success}, cellpose={cellpose_success}"
+            f"sam3={sam3_success}, dino={dino_success}"
+
         )
         return False
 
