@@ -1550,7 +1550,7 @@ exit $EXTRACT_STATUS
         recon_folder_path: str = "",
     ) -> bool:
         """
-        Run CPU-based combination of Cellpose+DINO and SAM3+DINO segmentation results
+        Run CPU-based combination of SAM3+DINO segmentation results
         at NERSC Perlmutter via SFAPI Slurm job.
 
         :param recon_folder_path: Relative path to the reconstructed data folder,
@@ -1584,6 +1584,7 @@ exit $EXTRACT_STATUS
             "account": "amsc006",
             "constraint": "cpu",
             "walltime": "01:00:00",
+            "dilate_px": 5,
         }
         try:
             seg_options = Variable.get("nersc-combine-seg-options", default={"defaults": True}, _sync=True)
@@ -1602,6 +1603,7 @@ exit $EXTRACT_STATUS
         account = opts["account"]
         constraint = opts["constraint"]
         walltime = opts["walltime"]
+        dilate_px = opts["dilate_px"]
 
         job_name = f"combine_{Path(recon_folder_path).name}"
 
@@ -1621,7 +1623,6 @@ exit $EXTRACT_STATUS
 module load conda
 conda activate {conda_env_path}
 
-# mkdir -p {combined_output}/cellpose_dino
 mkdir -p {combined_output}/sam_dino
 mkdir -p {pscratch_path}/tomo_seg_logs
 
@@ -1632,18 +1633,22 @@ echo "Input:    {input_dir}"
 echo "SAM3:     {sam3_results}"
 echo "DINO:     {dino_results}"
 echo "Output:   {combined_output}"
+echo "Dilate:   {dilate_px}px"
 echo "============================================================"
 
 START_TIME=$(date +%s)
 
 cd {seg_scripts_dir}
 
-echo "--- Running SAM3 + DINO combination ---"
+echo "--- Running SAM3 + DINO combination (v3) ---"
 python -m src.combine_sam_dino_v3 \\
     --input-dir "{input_dir}" \\
     --instance-masks-dir "{sam3_results}" \\
     --semantic-masks-dir "{dino_results}/semantic_masks" \\
-    --output-dir "{combined_output}/sam_dino"
+    --output-dir "{combined_output}/sam_dino" \\
+    --dilate-px {dilate_px} \\
+    --save-extracted \\
+    --dino-trust Cortex Phloem_Fibers Phloem Air-based_Pith_cells Water-based_Pith_cells
 
 SAM_DINO_STATUS=$?
 echo "SAM3+DINO exit status: $SAM_DINO_STATUS"
@@ -1658,15 +1663,12 @@ echo "============================================================"
 echo "SEGMENTATION COMBINATION COMPLETED: $(date)"
 echo "============================================================"
 echo "Total time: ${{MINUTES}}m ${{SECONDS}}s (${{DURATION}}s)"
-# echo "Cellpose+DINO status: $CELLPOSE_DINO_STATUS"
 echo "SAM3+DINO status:     $SAM_DINO_STATUS"
 echo "============================================================"
 
 chmod -R 2775 {combined_output} 2>/dev/null || true
 
-# if [ $CELLPOSE_DINO_STATUS -ne 0 ] || [ $SAM_DINO_STATUS -ne 0 ]; then
 if [ $SAM_DINO_STATUS -ne 0 ]; then
-
     exit 1
 fi
 exit 0
