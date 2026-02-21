@@ -710,7 +710,7 @@ date
     def segmentation(
         self,
         recon_folder_path: str = "",
-        num_nodes: int = 26,
+        num_nodes: int = 42,
     ) -> dict:
         """
         Run SAM3 segmentation at NERSC Perlmutter (v6 with overlap + max confidence stitching).
