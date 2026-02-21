@@ -2732,6 +2732,17 @@ def nersc_forge_recon_multisegment_flow(
     else:
         logger.warning("Skipping combination and extraction: requires DINO plus SAM3.")
 
+    logger.info("Copying rec and seg folders from pscratch to NERSC CFS.")
+    for cfs_path in [scratch_path_tiff, scratch_path_segment]:
+        try:
+            transfer_controller.copy(
+                file_path=cfs_path,
+                source=config.nersc832_alsdev_pscratch_scratch,
+                destination=config.nersc832_alsdev_scratch
+            )
+            logger.info(f"CFS transfer success: {cfs_path}")
+        except Exception as e:
+            logger.error(f"Failed to copy {cfs_path} to NERSC CFS: {e}")
 
     # ── STEP 6: Pruning ───────────────────────────────────────────────────────
     logger.info("Scheduling file pruning tasks.")
