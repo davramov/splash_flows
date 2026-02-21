@@ -801,7 +801,8 @@ date
         #     qos = "realtime"
         # else:
         #     qos = "regular"
-        
+# --prompts 'Cortex' 'Phloem Fibers' 'Phloem' 'Hydrated Xylem vessels' 'Air-based Pith cells' 'Water-based Pith cells' 'Dehydrated Xylem vessels' \
+
         walltime = "00:59:00"
         job_name = f"seg_{Path(recon_folder_path).name}"
 
@@ -895,8 +896,7 @@ srun --ntasks-per-node=1 --gpus-per-task=4 \
     --batch-size "${{BATCH_SIZE}}" \
     --confidence {confidence_str} \
     --overlap-ratio {overlap} \
-    --prompts 'Cortex' 'Phloem Fibers' 'Phloem' 'Hydrated Xylem vessels' 'Air-based Pith cells' 'Water-based Pith cells' 'Dehydrated Xylem vessels' \
-    # --prompts 'Phloem Fibers' 'Hydrated Xylem vessels' 'Air-based Pith cells' 'Dehydrated Xylem vessels' \
+    --prompts 'Phloem Fibers' 'Hydrated Xylem vessels' 'Air-based Pith cells' 'Dehydrated Xylem vessels' \
     --bpe-path "${{BPE_PATH}}" \
     --original-checkpoint "${{ORIG_CKPT}}" \
     --finetuned-checkpoint "${{FT_CKPT}}"
