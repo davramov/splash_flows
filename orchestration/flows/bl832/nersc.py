@@ -713,9 +713,9 @@ date
         num_nodes: int = 26,
     ) -> dict:
         """
-        Run SAM3 segmentation at NERSC Perlmutter (v5 with overlap + max confidence stitching).
+        Run SAM3 segmentation at NERSC Perlmutter (v6 with overlap + max confidence stitching).
         """
-        logger.info("Starting NERSC segmentation process (inference_v5).")
+        logger.info("Starting NERSC segmentation process (inference_v6).")
 
         user = self.client.user()
         pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
@@ -793,8 +793,8 @@ date
         else:
             confidence_str = str(confidence)
 
-        prompts = ["Cortex", "Phloem Fibers", "Air-based Pith cells", 
-                "Water-based Pith cells", "Xylem vessels"]
+        # prompts = ["Cortex", "Phloem Fibers", "Air-based Pith cells", 
+                # "Water-based Pith cells", "Xylem vessels"]
         # prompts_str = " ".join([f'"{p}"' for p in prompts])
         
         # if num_nodes <= 4:
@@ -888,7 +888,7 @@ srun --ntasks-per-node=1 --gpus-per-task=4 \
     --rdzv_id=$SLURM_JOB_ID \
     --rdzv_backend=c10d \
     --rdzv_endpoint=$MASTER_ADDR:$MASTER_PORT \
-    src/inference_v5.py \
+    src/inference_v6.py \
     --input-dir "${{INPUT_DIR}}" \
     --output-dir "${{OUTPUT_DIR}}" \
     --patch-size {patch_size} \
@@ -1230,7 +1230,7 @@ exit $SEG_STATUS
 
         CELLPOSE_DEFAULTS = {
             "defaults": True,
-            "num_nodes": 16,
+            "num_nodes": 10,
             "nproc_per_node": 4,
             "qos": "regular",
             "account": "amsc006",
@@ -1400,7 +1400,7 @@ exit $SEG_STATUS
         cfs_path = "/global/cfs/cdirs/als/data_mover/8.3.2"
         conda_env_path = f"{cfs_path}/envs/dino_demo"
 
-        seg_scripts_dir = f"{cfs_path}/tomography_segmentation_scripts/inference_v5_multiseg/forge_feb_seg_model_demo"
+        seg_scripts_dir = f"{cfs_path}/tomography_segmentation_scripts/inference_latest/forge_feb_seg_model_demo"
 
         seg_folder = recon_folder_path.replace("/rec", "/seg")
         input_dir = f"{pscratch_path}/8.3.2/scratch/{recon_folder_path}"
@@ -1487,7 +1487,7 @@ CELLPOSE_DINO_STATUS=$?
 echo "Cellpose+DINO exit status: $CELLPOSE_DINO_STATUS"
 
 echo "--- Running SAM3 + DINO combination ---"
-python -m src.combine_sam_dino \\
+python -m src.combine_sam_dino_v2 \\
     --input-dir "{input_dir}" \\
     --instance-masks-dir "{sam3_results}" \\
     --semantic-masks-dir "{dino_results}/semantic_masks" \\
