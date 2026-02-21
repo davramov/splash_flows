@@ -896,6 +896,7 @@ srun --ntasks-per-node=1 --gpus-per-task=4 \
     --confidence {confidence_str} \
     --overlap-ratio {overlap} \
     --prompts 'Cortex' 'Phloem Fibers' 'Phloem' 'Hydrated Xylem vessels' 'Air-based Pith cells' 'Water-based Pith cells' 'Dehydrated Xylem vessels' \
+    # --prompts 'Phloem Fibers' 'Hydrated Xylem vessels' 'Air-based Pith cells' 'Dehydrated Xylem vessels' \
     --bpe-path "${{BPE_PATH}}" \
     --original-checkpoint "${{ORIG_CKPT}}" \
     --finetuned-checkpoint "${{FT_CKPT}}"
@@ -1638,7 +1639,7 @@ START_TIME=$(date +%s)
 cd {seg_scripts_dir}
 
 echo "--- Running SAM3 + DINO combination ---"
-python -m src.combine_sam_dino_v2 \\
+python -m src.combine_sam_dino_v3 \\
     --input-dir "{input_dir}" \\
     --instance-masks-dir "{sam3_results}" \\
     --semantic-masks-dir "{dino_results}/semantic_masks" \\
@@ -2696,9 +2697,9 @@ def nersc_forge_recon_multisegment_flow(
         combine_future = nersc_combine_segmentations_task.submit(
             recon_folder_path=scratch_path_tiff, config=config
         )
-        extract_future = nersc_extract_regions_task.submit(
-            recon_folder_path=scratch_path_tiff, config=config
-        )
+        # extract_future = nersc_extract_regions_task.submit(
+        #     recon_folder_path=scratch_path_tiff, config=config
+        # )
 
         combine_success = combine_future.result()
         logger.info(f"Combination result: {combine_success}")
@@ -2715,20 +2716,20 @@ def nersc_forge_recon_multisegment_flow(
             except Exception as e:
                 logger.error(f"Failed to transfer combined outputs to data832: {e}")
 
-        extract_success = extract_future.result()
-        logger.info(f"Region extraction result: {extract_success}")
-        if extract_success:
-            logger.info("Transferring extracted region outputs to data832")
-            extract_segment_path = f"{folder_name}/seg{file_name}/combined/extract_regions"
-            try:
-                data832_extract_transfer_success = transfer_controller.copy(
-                    file_path=extract_segment_path,
-                    source=config.nersc832_alsdev_pscratch_scratch,
-                    destination=config.data832_scratch
-                )
-                logger.info(f"Extract regions transfer to data832 success: {data832_extract_transfer_success}")
-            except Exception as e:
-                logger.error(f"Failed to transfer extracted region outputs to data832: {e}")
+        # extract_success = extract_future.result()
+        # logger.info(f"Region extraction result: {extract_success}")
+        # if extract_success:
+        #     logger.info("Transferring extracted region outputs to data832")
+        #     extract_segment_path = f"{folder_name}/seg{file_name}/combined/extract_regions"
+        #     try:
+        #         data832_extract_transfer_success = transfer_controller.copy(
+        #             file_path=extract_segment_path,
+        #             source=config.nersc832_alsdev_pscratch_scratch,
+        #             destination=config.data832_scratch
+        #         )
+        #         logger.info(f"Extract regions transfer to data832 success: {data832_extract_transfer_success}")
+        #     except Exception as e:
+        #         logger.error(f"Failed to transfer extracted region outputs to data832: {e}")
     else:
         logger.warning("Skipping combination and extraction: requires DINO plus SAM3.")
 
