@@ -1612,7 +1612,7 @@ exit $EXTRACT_STATUS
 #SBATCH -A {account}
 #SBATCH -N {num_nodes}
 #SBATCH -C {constraint}
-#SBATCH --reservation=_CAP_MarchModCon_GPU
+#SBATCH --reservation=_CAP_MarchModCon_CPU
 #SBATCH --job-name={job_name}
 #SBATCH --time={walltime}
 #SBATCH --ntasks=1
