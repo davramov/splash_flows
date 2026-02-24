@@ -262,7 +262,7 @@ date
         job_script = f"""#!/bin/bash
 #SBATCH -q regular # {qos}
 #SBATCH -A amsc006 # als
-#SBATCH --reservation=_CAP_March_ModCon_Dry_Run_CPU
+#SBATCH --reservation=_CAP_MarchModCon_CPU
 #SBATCH -C cpu
 #SBATCH --job-name=tomo_recon_{folder_name}_{file_name}
 #SBATCH --output={pscratch_path}/tomo_recon_logs/%x_%j.out
@@ -809,7 +809,7 @@ date
         job_script = f"""#!/bin/bash
 #SBATCH -q {qos}
 #SBATCH -A {account}
-#SBATCH --reservation=_CAP_March_ModCon_Dry_Run_GPU
+#SBATCH --reservation=_CAP_MarchModCon_GPU
 #SBATCH -N {num_nodes}
 #SBATCH -C {constraint} # gpu
 #SBATCH --job-name={job_name}
@@ -1081,7 +1081,7 @@ exit $SEG_STATUS
 #SBATCH -A {account}
 #SBATCH -N {num_nodes}
 #SBATCH -C {constraint}
-#SBATCH --reservation=_CAP_March_ModCon_Dry_Run_GPU
+#SBATCH --reservation=_CAP_MarchModCon_GPU
 #SBATCH --job-name={job_name}
 #SBATCH --time={walltime}
 #SBATCH --ntasks-per-node=1
@@ -1264,7 +1264,7 @@ exit $SEG_STATUS
 #SBATCH -A {account}
 #SBATCH -N {num_nodes}
 #SBATCH -C {constraint}
-#SBATCH --reservation=_CAP_March_ModCon_Dry_Run_GPU
+#SBATCH --reservation=_CAP_MarchModCon_GPU
 #SBATCH --job-name={job_name}
 #SBATCH --time={walltime}
 #SBATCH --ntasks-per-node=1
@@ -1452,7 +1452,7 @@ exit $SEG_STATUS
 #SBATCH -A {account}
 #SBATCH -N {num_nodes}
 #SBATCH -C {constraint}
-#SBATCH --reservation=_CAP_March_ModCon_Dry_Run_CPU
+#SBATCH --reservation=_CAP_MarchModCon_GPU
 #SBATCH --job-name={job_name}
 #SBATCH --time={walltime}
 #SBATCH --ntasks=1
@@ -1612,7 +1612,7 @@ exit $EXTRACT_STATUS
 #SBATCH -A {account}
 #SBATCH -N {num_nodes}
 #SBATCH -C {constraint}
-#SBATCH --reservation=_CAP_March_ModCon_Dry_Run_CPU
+#SBATCH --reservation=_CAP_MarchModCon_GPU
 #SBATCH --job-name={job_name}
 #SBATCH --time={walltime}
 #SBATCH --ntasks=1
@@ -3035,6 +3035,37 @@ def nersc_multiresolution_task(
     return nersc_multiresolution_success
 
 
+@task(name="nersc_tiff_to_zarr_task")
+def nersc_tiff_to_zarr_task(
+    file_path: str,
+    config: Optional[Config832] = None,
+) -> bool:
+    """
+    Run tiff-to-zarr (single-node) multiresolution task at NERSC.
+
+    :param file_path: Path to the raw .h5 file (used to derive recon path).
+    :param config: Configuration object for the flow.
+    :return: True if the task completed successfully, False otherwise.
+    """
+    logger = get_run_logger()
+    if config is None:
+        logger.info("No config provided, using default Config832.")
+        config = Config832()
+
+    logger.info("Initializing NERSC Tomography HPC Controller.")
+    tomography_controller = get_controller(hpc_type=HPC.NERSC, config=config)
+
+    logger.info(f"Starting NERSC tiff-to-zarr task for {file_path=}")
+    success = tomography_controller.build_multi_resolution(file_path=file_path)
+
+    if not success:
+        logger.error("Tiff-to-zarr failed.")
+    else:
+        logger.info("Tiff-to-zarr successful.")
+    return success
+
+
+
 @flow(name="nersc_multiresolution_integration_test", flow_run_name="nersc_multiresolution_integration_test")
 def nersc_multiresolution_integration_test() -> bool:
     """
@@ -3183,8 +3214,12 @@ def nersc_segmentation_integration_test() -> bool:
 
 if __name__ == "__main__":
 
-    nersc_multiresolution_integration_test()
-    
+    # nersc_multiresolution_integration_test()
+    nersc_tiff_to_zarr_task(
+        file_path='DD-00842_hexemer/20260222_122341_petiole51.h5',
+        config=Config832()
+    )
+
     # Run the integration test flow
 
     # from sfapi_client import Client
