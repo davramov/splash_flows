@@ -340,8 +340,8 @@ class ALCFTomographyHPCController(TomographyHPCController):
         # segmentation_module = "src.inference_v2_optimized2"
         # workdir = f"{self.allocation_root}/segmentation/scripts/forge_feb_seg_model_demo_v2/forge_feb_seg_model_demo"
 
-        segmentation_module = "src.inference_v5"
-        workdir = f"{self.allocation_root}/segmentation/scripts/inference_v5/forge_feb_seg_model_demo"
+        segmentation_module = "src.inference_v6"
+        workdir = f"{self.allocation_root}/segmentation/scripts/inference_latest/forge_feb_seg_model_demo"
 
         with Executor(endpoint_id=endpoint_id, client=gcc) as fxe:
             logger.info(f"Running segmentation on {recon_folder_path} at ALCF")
@@ -386,7 +386,7 @@ class ALCFTomographyHPCController(TomographyHPCController):
         )
 
         segmentation_module = "src.inference_dino_v1"
-        workdir = f"{self.allocation_root}/segmentation/scripts/inference_v5/forge_feb_seg_model_demo"
+        workdir = f"{self.allocation_root}/segmentation/scripts/inference_latest/forge_feb_seg_model_demo"
 
         with Executor(endpoint_id=endpoint_id, client=gcc) as fxe:
             logger.info(f"Running segmentation on {recon_folder_path} at ALCF")
@@ -431,7 +431,7 @@ class ALCFTomographyHPCController(TomographyHPCController):
         )
 
         segmentation_module = "src.inference_cellpose_v3"  # v1
-        workdir = f"{self.allocation_root}/segmentation/scripts/inference_v5/forge_feb_seg_model_demo"
+        workdir = f"{self.allocation_root}/segmentation/scripts/inference_latest/forge_feb_seg_model_demo"
 
         with Executor(endpoint_id=endpoint_id, client=gcc) as fxe:
             logger.info(f"Running segmentation on {recon_folder_path} at ALCF")
@@ -596,16 +596,18 @@ class ALCFTomographyHPCController(TomographyHPCController):
     def _segmentation_wrapper(
         input_dir: str = "/eagle/SYNAPS-I/data/bl832/scratch/reconstruction/",
         output_dir: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/",
-        script_module: str = "src.inference_v5",
-        workdir: str = "/eagle/SYNAPS-I/segmentation/scripts/inference_v5/forge_feb_seg_model_demo",
+        script_module: str = "src.inference_v6",
+        workdir: str = "/eagle/SYNAPS-I/segmentation/scripts/inference_latest/forge_feb_seg_model_demo",
         nproc_per_node: int = 4,
-        patch_size: int = 640,
-        overlap_ratio: float = 0.25,
+        patch_size: int = 1000,
+        overlap_ratio: float = 0.5,
         batch_size: int = 8,
         confidence: float = 0.5,
-        prompts: list[str] = ["Cortex", "Phloem Fibers", "Air-based Pith cells", "Water-based Pith cells", "Xylem vessels"],
+        # prompts: list[str] = ["Cortex", "Phloem Fibers", "Air-based Pith cells", "Water-based Pith cells", "Xylem vessels"],
+        prompts: list[str] = ['Phloem Fibers', 'Hydrated Xylem vessels', 'Air-based Pith cells', 'Dehydrated Xylem vessels'],
+        # prompts 'Phloem Fibers' 'Hydrated Xylem vessels' 'Air-based Pith cells' 'Dehydrated Xylem vessels' \
         bpe_path: str = "/eagle/SYNAPS-I/segmentation/sam3_finetune/sam3/bpe_simple_vocab_16e6.txt.gz",
-        finetuned_checkpoint: str = "/eagle/SYNAPS-I/segmentation/sam3_finetune/sam3/checkpoint_v2.pt",
+        finetuned_checkpoint: str = "/eagle/SYNAPS-I/segmentation/sam3_finetune/sam3/checkpoint_v6.pt",
         original_checkpoint: str = "/eagle/SYNAPS-I/segmentation/sam3_finetune/sam3/sam3.pt",
         use_finetuned: bool = True,
         skip_existing: bool = False,
@@ -733,7 +735,7 @@ class ALCFTomographyHPCController(TomographyHPCController):
         batch_size: int = 4,
         num_workers: int = 4,
         nproc_per_node: int = 4,
-        workdir: str = "/eagle/SYNAPS-I/segmentation/scripts/inference_v5/forge_feb_seg_model_demo",
+        workdir: str = "/eagle/SYNAPS-I/segmentation/scripts/inference_latest/forge_feb_seg_model_demo",
         script_module: str = "src.inference_dino_v1",
     ) -> str:
         """
@@ -850,7 +852,7 @@ class ALCFTomographyHPCController(TomographyHPCController):
         finetuned_checkpoint: str = "/eagle/SYNAPS-I/segmentation/cellpose/petiole_model_flow0",
         save_overlay: bool = True,
         nproc_per_node: int = 4,
-        workdir: str = "/eagle/SYNAPS-I/segmentation/scripts/inference_v5/forge_feb_seg_model_demo",
+        workdir: str = "/eagle/SYNAPS-I/segmentation/scripts/inference_latest/forge_feb_seg_model_demo",
         script_module: str = "src.inference_cellpose_v3",  # v1
     ) -> str:
         """
@@ -972,11 +974,11 @@ class ALCFTomographyHPCController(TomographyHPCController):
 
         input_dir = f"{self.allocation_root}/data/bl832/scratch/reconstruction/{recon_folder_path}"
         sam3_results = f"{seg_base}/sam3"
-        cellpose_results = f"{seg_base}/cellpose"
+        # cellpose_results = f"{seg_base}/cellpose"
         dino_results = f"{seg_base}/dino"
         combined_output = f"{seg_base}/combined"
 
-        workdir = f"{self.allocation_root}/segmentation/scripts/inference_v5/forge_feb_seg_model_demo"
+        workdir = f"{self.allocation_root}/segmentation/scripts/inference_latest/forge_feb_seg_model_demo"
 
         gcc = Client(code_serialization_strategy=CombinedCode())
 
@@ -991,37 +993,117 @@ class ALCFTomographyHPCController(TomographyHPCController):
             future = fxe.submit(
                 self._combine_segmentations_wrapper,
                 input_dir=input_dir,
-                cellpose_results=cellpose_results,
+                # cellpose_results=cellpose_results,
                 dino_results=dino_results,
                 sam3_results=sam3_results,
                 combined_output=combined_output,
                 workdir=workdir,
+                dilate_px=5
             )
             result = self._wait_for_globus_compute_future(future, "combine_segmentations", check_interval=10)
 
         return result
 
+    # @staticmethod
+    # def _combine_segmentations_wrapper(
+    #     input_dir: str = "/eagle/SYNAPS-I/data/bl832/scratch/reconstruction/",
+    #     cellpose_results: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/cellpose",
+    #     dino_results: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/dino",
+    #     sam3_results: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/sam3",
+    #     combined_output: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/combined",
+    #     workdir: str = "/eagle/SYNAPS-I/segmentation/scripts/inference_v5/forge_feb_seg_model_demo",
+    # ) -> str:
+    #     """
+    #     Run CPU-based combination of Cellpose+DINO and SAM3+DINO segmentation outputs.
+    #     Executed via Globus Compute on a CPU endpoint.
+
+    #     :param input_dir: Directory containing the original reconstructed input data.
+    #     :param cellpose_results: Directory containing Cellpose segmentation outputs.
+    #     :param dino_results: Directory containing DINO segmentation outputs.
+    #     :param sam3_results: Directory containing SAM3 segmentation outputs.
+    #     :param combined_output: Root directory for combined output results.
+    #     :param workdir: Working directory for the combination scripts.
+    #     :return: Confirmation message upon completion.
+    #     """
+    #     import os
+    #     import subprocess
+    #     import time
+
+    #     combine_start = time.time()
+    #     os.chdir(workdir)
+
+    #     venv_path = "/eagle/SYNAPS-I/segmentation/env_dino_cellpose"
+
+    #     env = os.environ.copy()
+    #     env.update({
+    #         "PATH": f"{venv_path}/bin:{env.get('PATH', '')}",
+    #         "HF_HUB_CACHE": "/eagle/SYNAPS-I/segmentation/.cache/huggingface",
+    #         "HF_HOME": "/eagle/SYNAPS-I/segmentation/.cache/huggingface",
+    #     })
+
+    #     tasks = [
+    #         {
+    #             "name": "cellpose_dino",
+    #             "module": "src.combine_cellpose_dino",  # batch_process — handles flat masks ✓
+    #             "args": [
+    #                 "--input-dir", input_dir,
+    #                 "--instance-masks-dir", f"{cellpose_results}/instance_masks",
+    #                 "--semantic-masks-dir", f"{dino_results}/semantic_masks",
+    #                 "--output-dir", f"{combined_output}/cellpose_dino",
+    #             ],
+    #         },
+    #         {
+    #             "name": "sam_dino",
+    #             "module": "src.combine_sam_dino",  # prompt-subdir script — handles SAM3 output ✓
+    #             "args": [
+    #                 "--input-dir", input_dir,
+    #                 "--instance-masks-dir", sam3_results,
+    #                 "--semantic-masks-dir", f"{dino_results}/semantic_masks",
+    #                 "--output-dir", f"{combined_output}/sam_dino",
+    #             ],
+    #         },
+    #     ]
+
+    #     failed = []
+    #     for combine_task in tasks:
+    #         cmd = [f"{venv_path}/bin/python", "-m", combine_task["module"]] + combine_task["args"]
+    #         print(f"Running {combine_task['name']}: {' '.join(cmd)}")
+
+    #         result = subprocess.run(
+    #             cmd,
+    #             env=env,
+    #             cwd=workdir,
+    #             stdout=subprocess.PIPE,
+    #             stderr=subprocess.PIPE,
+    #             text=True,
+    #         )
+    #         print(f"STDOUT [{combine_task['name']}]:\n{result.stdout}")
+    #         print(f"STDERR [{combine_task['name']}]:\n{result.stderr}")
+
+    #         print(f"STDOUT [{combine_task['name']}]: {result.stdout[-2000:] if result.stdout else 'None'}")
+    #         print(f"STDERR [{combine_task['name']}]: {result.stderr[-2000:] if result.stderr else 'None'}")
+
+    #         if result.returncode != 0:
+    #             print(f"FAILED [{combine_task['name']}]: return code {result.returncode}")
+    #             failed.append(combine_task["name"])
+    #         else:
+    #             print(f"SUCCESS [{combine_task['name']}]")
+
+    #     if failed:
+    #         raise RuntimeError(f"Segmentation combination failed for: {failed}")
+
+    #     return f"Segmentation combination completed in {time.time() - combine_start:.1f}s"
+
     @staticmethod
     def _combine_segmentations_wrapper(
         input_dir: str = "/eagle/SYNAPS-I/data/bl832/scratch/reconstruction/",
-        cellpose_results: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/cellpose",
+        # cellpose_results: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/cellpose",
         dino_results: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/dino",
         sam3_results: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/sam3",
         combined_output: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/combined",
-        workdir: str = "/eagle/SYNAPS-I/segmentation/scripts/inference_v5/forge_feb_seg_model_demo",
+        workdir: str = "/eagle/SYNAPS-I/segmentation/scripts/inference_latest/forge_feb_seg_model_demo",
+        dilate_px: int = 5,
     ) -> str:
-        """
-        Run CPU-based combination of Cellpose+DINO and SAM3+DINO segmentation outputs.
-        Executed via Globus Compute on a CPU endpoint.
-
-        :param input_dir: Directory containing the original reconstructed input data.
-        :param cellpose_results: Directory containing Cellpose segmentation outputs.
-        :param dino_results: Directory containing DINO segmentation outputs.
-        :param sam3_results: Directory containing SAM3 segmentation outputs.
-        :param combined_output: Root directory for combined output results.
-        :param workdir: Working directory for the combination scripts.
-        :return: Confirmation message upon completion.
-        """
         import os
         import subprocess
         import time
@@ -1040,23 +1122,17 @@ class ALCFTomographyHPCController(TomographyHPCController):
 
         tasks = [
             {
-                "name": "cellpose_dino",
-                "module": "src.combine_cellpose_dino",  # batch_process — handles flat masks ✓
-                "args": [
-                    "--input-dir", input_dir,
-                    "--instance-masks-dir", f"{cellpose_results}/instance_masks",
-                    "--semantic-masks-dir", f"{dino_results}/semantic_masks",
-                    "--output-dir", f"{combined_output}/cellpose_dino",
-                ],
-            },
-            {
                 "name": "sam_dino",
-                "module": "src.combine_sam_dino",  # prompt-subdir script — handles SAM3 output ✓
+                "module": "src.combine_sam_dino_v3",
                 "args": [
                     "--input-dir", input_dir,
                     "--instance-masks-dir", sam3_results,
                     "--semantic-masks-dir", f"{dino_results}/semantic_masks",
                     "--output-dir", f"{combined_output}/sam_dino",
+                    "--dilate-px", str(dilate_px),
+                    "--save-extracted",
+                    "--dino-trust", "Cortex", "Phloem_Fibers", "Phloem",
+                                    "Air-based_Pith_cells", "Water-based_Pith_cells",
                 ],
             },
         ]
@@ -1074,9 +1150,6 @@ class ALCFTomographyHPCController(TomographyHPCController):
                 stderr=subprocess.PIPE,
                 text=True,
             )
-            print(f"STDOUT [{combine_task['name']}]:\n{result.stdout}")
-            print(f"STDERR [{combine_task['name']}]:\n{result.stderr}")
-
             print(f"STDOUT [{combine_task['name']}]: {result.stdout[-2000:] if result.stdout else 'None'}")
             print(f"STDERR [{combine_task['name']}]: {result.stderr[-2000:] if result.stderr else 'None'}")
 
@@ -1609,22 +1682,28 @@ def alcf_forge_recon_multisegment_flow(
     dino_future = alcf_segmentation_dino_task.submit(
         recon_folder_path=scratch_path_tiff, config=config
     )
-    cellpose_future = alcf_segmentation_cellpose_task.submit(
-        recon_folder_path=scratch_path_tiff, config=config
-    )
+    # cellpose_future = alcf_segmentation_cellpose_task.submit(
+    #     recon_folder_path=scratch_path_tiff, config=config
+    # )
 
     sam3_success = sam3_future.result()
     dino_success = dino_future.result()
-    cellpose_success = cellpose_future.result()
+    # cellpose_success = cellpose_future.result()
 
-    logger.info(f"Segmentation results — SAM3: {sam3_success}, DINO: {dino_success}, Cellpose: {cellpose_success}")
+    # logger.info(f"Segmentation results — SAM3: {sam3_success}, DINO: {dino_success}, Cellpose: {cellpose_success}")
 
-    any_seg_success = any([sam3_success, dino_success, cellpose_success])
+    # any_seg_success = any([sam3_success, dino_success, cellpose_success])
+
+    logger.info(f"Segmentation results — SAM3: {sam3_success}, DINO: {dino_success}")
+
+    any_seg_success = any([sam3_success, dino_success])
 
     # ── STEP 5: Combine segmentation results (sync, CPU) ─────────────────────
     combine_success = False
-    if dino_success and (sam3_success or cellpose_success):
-        logger.info("Running segmentation combination (SAM3+DINO and Cellpose+DINO).")
+    # if dino_success and (sam3_success or cellpose_success):
+
+    if dino_success and sam3_success:
+        logger.info("Running segmentation combination (SAM3+DINO).")
         combine_success = tomography_controller.combine_segmentations(
             recon_folder_path=scratch_path_tiff
         )
