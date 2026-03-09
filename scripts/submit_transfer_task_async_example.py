@@ -11,7 +11,7 @@ from orchestration.transfer_controller import globus_transfer_task
 
 @flow(name="submit_transfer_task_async_example")
 def submit_transfer_task_async_example(file_path: str = "/raw/transfer_tests/test.txt"):
-    """ 
+    """
     Example flow showing how to submit a transfer task asynchronously, allowing the flow to do other work while waiting
     for the transfer to complete. In this example, we copy a file within spot832 first (blocking),
     then submit an asynchronous transfer from spot832 to data832.
