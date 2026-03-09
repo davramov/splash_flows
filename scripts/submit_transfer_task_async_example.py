@@ -1,4 +1,4 @@
-# _tests/submit_transfer_task_test.py
+# scripts/submit_transfer_task_async_example.py
 import uuid
 from pathlib import Path
 
@@ -9,8 +9,16 @@ from orchestration.globus.transfer import start_transfer
 from orchestration.transfer_controller import globus_transfer_task
 
 
-@flow(name="submit_transfer_task_test")
-def submit_transfer_task_test(file_path: str = "/raw/transfer_tests/test.txt"):
+@flow(name="submit_transfer_task_async_example")
+def submit_transfer_task_async_example(file_path: str = "/raw/transfer_tests/test.txt"):
+    """ 
+    Example flow showing how to submit a transfer task asynchronously, allowing the flow to do other work while waiting
+    for the transfer to complete. In this example, we copy a file within spot832 first (blocking),
+    then submit an asynchronous transfer from spot832 to data832.
+    While waiting for that transfer to complete, we do some other work (simulated with log messages).
+    Once the first transfer is done, we check if it was successful before submitting another asynchronous transfer
+    from data832 to nersc832, again doing other work while waiting for it to complete.
+    """
     logger = get_run_logger()
     config = Config832()
 
@@ -64,4 +72,4 @@ def submit_transfer_task_test(file_path: str = "/raw/transfer_tests/test.txt"):
 
 
 if __name__ == "__main__":
-    submit_transfer_task_test()
+    submit_transfer_task_async_example()
