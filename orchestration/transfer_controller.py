@@ -8,6 +8,7 @@ import time
 from typing import Generic, TypeVar, Optional
 
 import globus_sdk
+from prefect import task
 
 from orchestration.config import BeamlineConfig
 from orchestration.globus.transfer import GlobusEndpoint, start_transfer
@@ -409,3 +410,28 @@ def get_transfer_controller(
         return SimpleTransferController(config)
     else:
         raise ValueError(f"Invalid transfer type: {transfer_type}")
+
+
+@task(name="globus_transfer_task", task_run_name="transfer: {file_path} → {destination.name}")
+def globus_transfer_task(
+    file_path: str,
+    source: GlobusEndpoint,
+    destination: GlobusEndpoint,
+    config: BeamlineConfig,
+    prometheus_metrics: Optional[PrometheusMetrics] = None
+) -> bool:
+    """
+    Perform a Globus transfer task.
+
+    Args:
+        file_path (str): The path of the file to copy.
+        source (GlobusEndpoint): The source endpoint.
+        destination (GlobusEndpoint): The destination endpoint.
+        config (BeamlineConfig): The configuration object.
+        prometheus_metrics (Optional[PrometheusMetrics]): Prometheus metrics object for collecting transfer metrics.
+
+    Returns:
+        bool: True if the transfer was successful, False otherwise.
+    """
+    transfer_controller = get_transfer_controller(CopyMethod.GLOBUS, config, prometheus_metrics)
+    return transfer_controller.copy(file_path=file_path, source=source, destination=destination)
