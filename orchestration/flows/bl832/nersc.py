@@ -871,7 +871,7 @@ START_TIME=$(date +%s)
 # Change to script directory
 cd {seg_scripts_dir}
 
-# Run inference with v5
+# Run inference with v6
 export TORCH_DISTRIBUTED_DEBUG=DETAIL
 export NCCL_DEBUG=INFO
 export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
@@ -933,7 +933,7 @@ exit $SEG_STATUS
 """
 
         try:
-            logger.info("Submitting segmentation job to Perlmutter (v5).")
+            logger.info("Submitting segmentation job to Perlmutter (v6).")
             perlmutter = self.client.compute(Machine.perlmutter)
 
             # Ensure directories exist
@@ -2408,7 +2408,6 @@ def nersc_forge_recon_multisegment_flow(
         logger.warning(
             f"Flow completed with issues: recon={nersc_reconstruction_success}, "
             f"sam3={sam3_success}, dino={dino_success}"
-
         )
         return False
 
@@ -2425,7 +2424,7 @@ def nersc_streaming_flow(
     controller: NERSCTomographyHPCController = get_controller(
         hpc_type=HPC.NERSC,
         config=config
-    )  # type: ignore
+    )
 
     job_id = controller.start_streaming_service(walltime=walltime)
     save_block(SlurmJobBlock(job_id=job_id))
@@ -2644,180 +2643,3 @@ def nersc_segmentation_sam3_integration_test() -> bool:
     )
     logger.info(f"Flow success: {flow_success}")
     return flow_success
-
-
-if __name__ == "__main__":
-
-    # nersc_multiresolution_integration_test()
-    nersc_tiff_to_zarr_task(
-        file_path='DD-00842_hexemer/20260222_122341_petiole51.h5',
-        config=Config832()
-    )
-
-    # Run the integration test flow
-
-    # from sfapi_client import Client
-    # from sfapi_client.compute import Machine
-
-    # # Use your existing client setup
-    # client = NERSCTomographyHPCController.create_sfapi_client()
-    # perlmutter = client.compute(Machine.perlmutter)
-
-    # job = perlmutter.job(jobid=48781402)
-    # job.cancel()
-    # print(f"Job {job.jobid} cancelled, state: {job.state}")
-
-    # job = perlmutter.job(jobid=48778803)
-    # job.cancel()
-    # print(f"Job {job.jobid} cancelled, state: {job.state}")
-
-    # job = perlmutter.job(jobid=48777760)
-    # job.cancel()
-    # print(f"Job {job.jobid} cancelled, state: {job.state}")
-
-    # nersc_forge_recon_segment_flow('/global/raw/raw/DD-00842_hexemer/20260212_110324_petiole24.h5')
-    # result = nersc_segmentation_integration_test()
-    # print(f"Integration test result: {result}")
-
-
-# if __name__ == "__main__":
-
-#     config = Config832()
-
-    # pull_shifter_image_flow(config=config)
-
-    # # Fibers ------------------------------------------
-
-    # start = time.time()
-    # nersc_recon_flow(
-    #     file_path="dabramov/20251218_111600_silkraw.h5",
-    #     num_nodes=4,
-    #     config=config
-    # )
-    # end = time.time()
-    # logger.info(f"Total reconstruction time with 4 nodes: {end - start} seconds")
-    # print(f"Total reconstruction time with 4 nodes: {end - start} seconds")
-
-    # start = time.time()
-    # nersc_recon_flow(
-    #     file_path="dabramov/20230215_135338_PET_Al_PP_Al2O3_fibers_in_glass_pipette.h5",
-    #     num_nodes=8,
-    #     config=config
-    # )
-    # end = time.time()
-    # logger.info(f"Total reconstruction time with 8 nodes: {end - start} seconds")
-    # print(f"Total reconstruction time with 8 nodes: {end - start} seconds")
-
-    # start = time.time()
-    # nersc_recon_flow(
-    #     file_path="dabramov/20230215_135338_PET_Al_PP_Al2O3_fibers_in_glass_pipette.h5",
-    #     num_nodes=4,
-    #     config=config
-    # )
-    # end = time.time()
-    # logger.info(f"Total reconstruction time with 4 nodes: {end - start} seconds")
-    # print(f"Total reconstruction time with 4 nodes: {end - start} seconds")
-
-    # start = time.time()
-    # nersc_recon_flow(
-    #     file_path="dabramov/20230215_135338_PET_Al_PP_Al2O3_fibers_in_glass_pipette.h5",
-    #     num_nodes=2,
-    #     config=config
-    # )
-    # end = time.time()
-    # logger.info(f"Total reconstruction time with 2 nodes: {end - start} seconds")
-    # print(f"Total reconstruction time with 2 nodes: {end - start} seconds")
-
-    # start = time.time()
-    # nersc_recon_flow(
-    #     file_path="dabramov/20230215_135338_PET_Al_PP_Al2O3_fibers_in_glass_pipette.h5",
-    #     num_nodes=1,
-    #     config=config
-    # )
-    # end = time.time()
-    # logger.info(f"Total reconstruction time with 1 node: {end - start} seconds")
-    # print(f"Total reconstruction time with 1 node: {end - start} seconds")
-
-    # # # # Fungi ------------------------------------------
-
-    # start = time.time()
-    # nersc_recon_flow(
-    #     file_path="dabramov/20230606_151124_jong-seto_fungal-mycelia_roll-AQ_fungi1_fast.h5",
-    #     num_nodes=8,
-    #     config=config
-    # )
-    # end = time.time()
-    # logger.info(f"Total reconstruction time with 8 nodes: {end - start} seconds")
-    # print(f"Total reconstruction time with 8 nodes: {end - start} seconds")
-
-    # start = time.time()
-    # nersc_recon_flow(
-    #     file_path="dabramov/20230606_151124_jong-seto_fungal-mycelia_roll-AQ_fungi1_fast.h5",
-    #     num_nodes=4,
-    #     config=config
-    # )
-    # end = time.time()
-    # logger.info(f"Total reconstruction time with 4 nodes: {end - start} seconds")
-    # print(f"Total reconstruction time with 4 nodes: {end - start} seconds")
-
-    # start = time.time()
-    # nersc_recon_flow(
-    #     file_path="dabramov/20230606_151124_jong-seto_fungal-mycelia_roll-AQ_fungi1_fast.h5",
-    #     num_nodes=2,
-    #     config=config
-    # )
-    # end = time.time()
-    # logger.info(f"Total reconstruction time with 2 nodes: {end - start} seconds")
-    # print(f"Total reconstruction time with 2 nodes: {end - start} seconds")
-
-    # start = time.time()
-    # nersc_recon_flow(
-    #     file_path="dabramov/20230606_151124_jong-seto_fungal-mycelia_roll-AQ_fungi1_fast.h5",
-    #     num_nodes=1,
-    #     config=config
-    # )
-    # end = time.time()
-    # logger.info(f"Total reconstruction time with 1 node: {end - start} seconds")
-    # print(f"Total reconstruction time with 1 node: {end - start} seconds")
-
-    # # # # Silk ------------------------------------------
-
-    # start = time.time()
-    # nersc_recon_flow(
-    #     file_path="dabramov/20251218_111600_silkraw.h5",
-    #     num_nodes=8,
-    #     config=config
-    # )
-    # end = time.time()
-    # logger.info(f"Total reconstruction time with 8 nodes: {end - start} seconds")
-    # print(f"Total reconstruction time with 8 nodes: {end - start} seconds")
-
-    # start = time.time()
-    # nersc_recon_flow(
-    #     file_path="dabramov/20251218_111600_silkraw.h5",
-    #     num_nodes=4,
-    #     config=config
-    # )
-    # end = time.time()
-    # logger.info(f"Total reconstruction time with 4 nodes: {end - start} seconds")
-    # print(f"Total reconstruction time with 4 nodes: {end - start} seconds")
-
-    # start = time.time()
-    # nersc_recon_flow(
-    #     file_path="dabramov/20251218_111600_silkraw.h5",
-    #     num_nodes=2,
-    #     config=config
-    # )
-    # end = time.time()
-    # logger.info(f"Total reconstruction time with 2 nodes: {end - start} seconds")
-    # print(f"Total reconstruction time with 2 nodes: {end - start} seconds")
-
-    # start = time.time()
-    # nersc_recon_flow(
-    #     file_path="dabramov/20251218_111600_silkraw.h5",
-    #     num_nodes=1,
-    #     config=config
-    # )
-    # end = time.time()
-    # logger.info(f"Total reconstruction time with 1 node: {end - start} seconds")
-    # print(f"Total reconstruction time with 1 node: {end - start} seconds")
