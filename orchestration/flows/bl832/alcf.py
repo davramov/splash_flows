@@ -305,7 +305,7 @@ class ALCFTomographyHPCController(TomographyHPCController):
             f"Converted tiff files to zarr;\n {zarr_res}"
         )
 
-    def segmentation(
+    def segmentation_sam3(
         self,
         recon_folder_path: str = "",
     ) -> bool:
@@ -339,7 +339,7 @@ class ALCFTomographyHPCController(TomographyHPCController):
         with Executor(endpoint_id=endpoint_id, client=gcc) as fxe:
             logger.info(f"Running segmentation on {recon_folder_path} at ALCF")
             future = fxe.submit(
-                self._segmentation_wrapper,
+                self._segmentation_sam3_wrapper,
                 input_dir=rundir,
                 output_dir=output_dir,
                 script_module=segmentation_module,
@@ -395,7 +395,7 @@ class ALCFTomographyHPCController(TomographyHPCController):
         return result
 
     @staticmethod
-    def _segmentation_wrapper(
+    def _segmentation_sam3_wrapper(
         input_dir: str = "/eagle/SYNAPS-I/data/bl832/scratch/reconstruction/",
         output_dir: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/",
         script_module: str = "src.inference_v6",
@@ -877,6 +877,11 @@ def alcf_recon_flow(
         config=config
     )
 
+    alcf_reconstruction_success = False
+    alcf_multi_res_success = False
+    data832_tiff_transfer_success = False
+    data832_zarr_transfer_success = False
+
     # STEP 1: Transfer data from data832 to ALCF
     logger.info("Copying raw data to ALCF.")
     data832_raw_path = f"{folder_name}/{h5_file_name}"
@@ -1041,6 +1046,11 @@ def alcf_forge_recon_segment_flow(
         config=config
     )
 
+    alcf_reconstruction_success = False
+    alcf_segmentation_success = False
+    data832_tiff_transfer_success = False
+    segment_transfer_success = False
+
     # STEP 1: Transfer data from data832 to ALCF
     logger.info("Copying raw data to ALCF.")
     data832_raw_path = f"{folder_name}/{h5_file_name}"
@@ -1088,7 +1098,7 @@ def alcf_forge_recon_segment_flow(
 
             # STEP 4: Run the Segmentation Task at ALCF
             logger.info(f"Starting ALCF segmentation task for {scratch_path_tiff=}")
-            alcf_segmentation_success = alcf_segmentation_task(
+            alcf_segmentation_success = alcf_segmentation_sam3_task(
                 recon_folder_path=scratch_path_tiff,
                 config=config
             )
@@ -1289,7 +1299,7 @@ def alcf_forge_recon_multisegment_flow(
     # ── STEP 4: SAM3 / DINO / Cellpose concurrently ──────────────────────────
     logger.info("Submitting SAM3, DINO, and Cellpose segmentation tasks concurrently.")
 
-    sam3_future = alcf_segmentation_task.submit(
+    sam3_future = alcf_segmentation_sam3_task.submit(
         recon_folder_path=scratch_path_tiff, config=config
     )
     dino_future = alcf_segmentation_dino_task.submit(
@@ -1325,7 +1335,7 @@ def alcf_forge_recon_multisegment_flow(
         )
         logger.info(f"Segmentation transfer to data832: {segment_transfer_success}")
 
-    # ── STEP 6: Pruning ───────────────────────────────────────────────────────
+    # ── STEP 7: Pruning ───────────────────────────────────────────────────────
     logger.info("Scheduling file pruning tasks.")
     prune_controller = get_prune_controller(
         prune_type=PruneMethod.GLOBUS,
@@ -1375,8 +1385,8 @@ def alcf_forge_recon_multisegment_flow(
     return alcf_reconstruction_success and any_seg_success
 
 
-@task(name="alcf_segmentation_task")
-def alcf_segmentation_task(
+@task(name="alcf_segmentation_sam3_task")
+def alcf_segmentation_sam3_task(
     recon_folder_path: str,
     config: Optional[Config832] = None,
 ) -> bool:
@@ -1399,7 +1409,7 @@ def alcf_segmentation_task(
         config=config
     )
     logger.info(f"Starting ALCF segmentation task for {recon_folder_path=}")
-    alcf_segmentation_success = tomography_controller.segmentation(
+    alcf_segmentation_success = tomography_controller.segmentation_sam3(
         recon_folder_path=recon_folder_path,
     )
     if not alcf_segmentation_success:
@@ -1449,7 +1459,7 @@ def alcf_segmentation_integration_test() -> bool:
     logger = get_run_logger()
     logger.info("Starting ALCF segmentation integration test.")
     recon_folder_path = 'DD-00842_hexemer/test_16'  # 'rec20211222_125057_petiole4'  # 'test'  #
-    flow_success = alcf_segmentation_task(
+    flow_success = alcf_segmentation_sam3_task(
         recon_folder_path=recon_folder_path,
         config=Config832()
     )
