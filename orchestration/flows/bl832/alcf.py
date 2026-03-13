@@ -446,152 +446,6 @@ class ALCFTomographyHPCController(TomographyHPCController):
 
         return result
 
-    # @staticmethod
-    # def _segmentation_wrapper(
-    #     input_dir: str = "/eagle/SYNAPS-I/data/bl832/scratch/reconstruction/",
-    #     output_dir: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/",
-    #     script_module: str = "src.inference_v2_optimized2",
-    #     workdir: str = "/eagle/SYNAPS-I/segmentation/scripts/forge_feb_seg_model_demo_v2/forge_feb_seg_model_demo",
-    #     nproc_per_node: int = 4,
-    #     patch_size: int = 640,
-    #     batch_size: int = 8,
-    #     confidence: float = 0.5,
-    #     prompts: list[str] = ["Cortex", "Phloem Fibers", "Air-based Pith cells", "Water-based Pith cells", "Xylem vessels"],
-    #     bpe_path: str = "/eagle/SYNAPS-I/segmentation/sam3_finetune/sam3/bpe_simple_vocab_16e6.txt.gz",
-    #     finetuned_checkpoint: str = "/eagle/SYNAPS-I/segmentation/sam3_finetune/sam3/checkpoint.pt",
-    #     original_checkpoint: str = "/eagle/SYNAPS-I/segmentation/sam3_finetune/sam3/sam3.pt",
-    #     use_finetuned: bool = True,
-    # ) -> str:
-    #     """
-    #     Wrapper function to run segmentation using torch.distributed.run on ALCF.
-    #     This is the code that is executed by Globus Compute.
-
-    #     :param input_dir: Directory containing input data for segmentation.
-    #     :param output_dir: Directory to save segmentation outputs.
-    #     :param script_module: Python module to run for segmentation.
-    #     :param workdir: Working directory for the segmentation script.
-    #     :param nproc_per_node: Number of processes per node.
-    #     :param patch_size: Size of the patches for segmentation.
-    #     :param batch_size: Batch size for segmentation.
-    #     :param confidence: Confidence threshold for segmentation.
-    #     :param prompts: List of prompts for segmentation.
-    #     :param bpe_path: Path to the BPE vocabulary file.
-    #     :param finetuned_checkpoint: Path to the finetuned model checkpoint.
-    #     :param original_checkpoint: Path to the original model checkpoint.
-    #     :param use_finetuned: Whether to use the finetuned model checkpoint.
-
-    #     :return: Confirmation message upon completion.
-    #     """
-    #     import os
-    #     import subprocess
-    #     import time
-
-    #     seg_start = time.time()
-    #     os.chdir(workdir)
-
-    #     # Get PBS info
-    #     pbs_nodefile = os.environ.get("PBS_NODEFILE")
-    #     pbs_jobid = os.environ.get("PBS_JOBID", "12345")
-
-    #     print("=== PBS DEBUG ===")
-    #     print(f"PBS_NODEFILE: {pbs_nodefile}")
-    #     print(f"PBS_JOBID: {pbs_jobid}")
-
-    #     # Determine number of nodes and master address based on PBS_NODEFILE
-    #     if pbs_nodefile and os.path.exists(pbs_nodefile):
-    #         with open(pbs_nodefile, 'r') as f:
-    #             all_lines = [line.strip() for line in f if line.strip()]
-    #         unique_nodes = list(dict.fromkeys(all_lines))
-    #         actual_nnodes = len(unique_nodes)
-    #         master_addr = unique_nodes[0]
-    #         print(f"PBS_NODEFILE contents: {all_lines}")
-    #         print(f"Unique nodes ({actual_nnodes}): {unique_nodes}")
-    #         print(f"Master: {master_addr}")
-    #     else:
-    #         actual_nnodes = 1
-    #         master_addr = "localhost"
-    #         print("No PBS_NODEFILE, single node mode")
-
-    #     # Use explicit path to torchrun from the virtual environment
-    #     venv_path = "/eagle/SYNAPS-I/segmentation/env"
-
-    #     # Build torchrun arguments
-    #     # rdzv is used for rendezvous in multi-node setups, meaning all nodes can find each other
-    #     torchrun_args = [
-    #         f"--nnodes={actual_nnodes}",
-    #         f"--nproc_per_node={nproc_per_node}",
-    #         f"--rdzv_id={pbs_jobid}",
-    #         "--rdzv_backend=c10d",
-    #         f"--rdzv_endpoint={master_addr}:29500",
-    #         "-m", script_module,
-    #         "--input-dir", input_dir,
-    #         "--output-dir", output_dir,
-    #         "--patch-size", str(patch_size),
-    #         "--batch-size", str(batch_size),
-    #         "--confidence", str(confidence),
-    #         "--prompts",
-    #     ]
-    #     # Add prompts to the arguments, each prompt is a separate argument
-    #     torchrun_args.extend([f'"{p}"' for p in prompts])
-
-    #     torchrun_args.extend(["--bpe-path", bpe_path])
-
-    #     if use_finetuned:
-    #         torchrun_args.extend([
-    #             "--finetuned-checkpoint", finetuned_checkpoint,
-    #             "--original-checkpoint", original_checkpoint,
-    #         ])
-    #     else:
-    #         torchrun_args.extend(["--original-checkpoint", original_checkpoint])
-
-    #     torchrun_cmd = f"{venv_path}/bin/python -m torch.distributed.run " + " ".join(torchrun_args)
-
-    #     # Environment + NCCL setup - activate venv and set PATH explicitly
-    #     # Following best practices from ALCF:
-    #     # https://docs.alcf.anl.gov/polaris/data-science/frameworks/pytorch/#multi-gpu-multi-node-scale-up
-    #     env_setup = (
-    #         f"source {venv_path}/bin/activate && "
-    #         f"export PATH={venv_path}/bin:$PATH && "
-    #         "export HF_HUB_CACHE=/eagle/SYNAPS-I/segmentation/.cache/huggingface && "
-    #         "export HF_HOME=$HF_HUB_CACHE && "
-    #         "export CUDA_DEVICE_ORDER=PCI_BUS_ID && "
-    #         "export NCCL_NET_GDR_LEVEL=PHB && "
-    #         "export NCCL_CROSS_NIC=1 && "
-    #         "export NCCL_COLLNET_ENABLE=1 && "
-    #         'export NCCL_NET="AWS Libfabric" && '
-    #         "export LD_LIBRARY_PATH=/soft/libraries/aws-ofi-nccl/v1.9.1-aws/lib:$LD_LIBRARY_PATH && "
-    #         "export LD_LIBRARY_PATH=/soft/libraries/hwloc/lib/:$LD_LIBRARY_PATH && "
-    #         "export FI_CXI_DISABLE_HOST_REGISTER=1 && "
-    #         "export FI_MR_CACHE_MONITOR=userfaultfd && "
-    #         "export FI_CXI_DEFAULT_CQ_SIZE=131072 && "
-    #         f"cd {workdir} && "
-    #     )
-
-    #     if actual_nnodes > 1:
-    #         # Use mpiexec to launch torchrun on all nodes
-    #         command = [
-    #             "mpiexec",
-    #             "-n", str(actual_nnodes),
-    #             "-ppn", "1",
-    #             "-hostfile", pbs_nodefile,
-    #             "--cpu-bind", "depth",
-    #             "-d", "16",
-    #             "bash", "-c", env_setup + torchrun_cmd
-    #         ]
-    #     else:
-    #         command = ["bash", "-c", env_setup + torchrun_cmd]
-
-    #     print(f"Running: {' '.join(command)}")
-
-    #     result = subprocess.run(command, stdout=None, stderr=None, text=True)
-    #     print(f"STDOUT: {result.stdout[-3000:] if result.stdout else 'None'}")
-    #     print(f"STDERR: {result.stderr[-3000:] if result.stderr else 'None'}")
-
-    #     if result.returncode != 0:
-    #         raise RuntimeError(f"Segmentation failed: {result.returncode}\nSTDERR: {result.stderr[-2000:]}")
-
-    #     return f"Completed in {time.time() - seg_start:.1f}s"
-
     @staticmethod
     def _segmentation_wrapper(
         input_dir: str = "/eagle/SYNAPS-I/data/bl832/scratch/reconstruction/",
@@ -603,9 +457,7 @@ class ALCFTomographyHPCController(TomographyHPCController):
         overlap_ratio: float = 0.5,
         batch_size: int = 8,
         confidence: float = 0.5,
-        # prompts: list[str] = ["Cortex", "Phloem Fibers", "Air-based Pith cells", "Water-based Pith cells", "Xylem vessels"],
         prompts: list[str] = ['Phloem Fibers', 'Hydrated Xylem vessels', 'Air-based Pith cells', 'Dehydrated Xylem vessels'],
-        # prompts 'Phloem Fibers' 'Hydrated Xylem vessels' 'Air-based Pith cells' 'Dehydrated Xylem vessels' \
         bpe_path: str = "/eagle/SYNAPS-I/segmentation/sam3_finetune/sam3/bpe_simple_vocab_16e6.txt.gz",
         finetuned_checkpoint: str = "/eagle/SYNAPS-I/segmentation/sam3_finetune/sam3/checkpoint_v6.pt",
         original_checkpoint: str = "/eagle/SYNAPS-I/segmentation/sam3_finetune/sam3/sam3.pt",
@@ -614,6 +466,23 @@ class ALCFTomographyHPCController(TomographyHPCController):
     ) -> str:
         """
         Wrapper function to run segmentation using torch.distributed.run on ALCF.
+
+        :param input_dir: Directory containing input data for segmentation.
+        :param output_dir: Directory to save segmentation outputs.
+        :param script_module: Python module containing the segmentation code to run.
+        :param workdir: Working directory for the segmentation script.
+        :param nproc_per_node: Number of processes per node for distributed training.
+        :param patch_size: Patch size for segmentation.
+        :param overlap_ratio: Overlap ratio for patch-based segmentation.
+        :param batch_size: Batch size for segmentation.
+        :param confidence: Confidence threshold for segmentation.
+        :param prompts: List of class prompts for segmentation.
+        :param bpe_path: Path to the BPE vocab file for SAM.
+        :param finetuned_checkpoint: Path to the finetuned SAM checkpoint.
+        :param original_checkpoint: Path to the original SAM checkpoint.
+        :param use_finetuned: Whether to use the finetuned checkpoint or not.
+        :param skip_existing: Whether to skip segmentation for patches that already have outputs.
+        :return: Confirmation message upon completion.
         """
         import os
         import subprocess
@@ -1003,96 +872,6 @@ class ALCFTomographyHPCController(TomographyHPCController):
             result = self._wait_for_globus_compute_future(future, "combine_segmentations", check_interval=10)
 
         return result
-
-    # @staticmethod
-    # def _combine_segmentations_wrapper(
-    #     input_dir: str = "/eagle/SYNAPS-I/data/bl832/scratch/reconstruction/",
-    #     cellpose_results: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/cellpose",
-    #     dino_results: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/dino",
-    #     sam3_results: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/sam3",
-    #     combined_output: str = "/eagle/SYNAPS-I/data/bl832/scratch/segmentation/combined",
-    #     workdir: str = "/eagle/SYNAPS-I/segmentation/scripts/inference_v5/forge_feb_seg_model_demo",
-    # ) -> str:
-    #     """
-    #     Run CPU-based combination of Cellpose+DINO and SAM3+DINO segmentation outputs.
-    #     Executed via Globus Compute on a CPU endpoint.
-
-    #     :param input_dir: Directory containing the original reconstructed input data.
-    #     :param cellpose_results: Directory containing Cellpose segmentation outputs.
-    #     :param dino_results: Directory containing DINO segmentation outputs.
-    #     :param sam3_results: Directory containing SAM3 segmentation outputs.
-    #     :param combined_output: Root directory for combined output results.
-    #     :param workdir: Working directory for the combination scripts.
-    #     :return: Confirmation message upon completion.
-    #     """
-    #     import os
-    #     import subprocess
-    #     import time
-
-    #     combine_start = time.time()
-    #     os.chdir(workdir)
-
-    #     venv_path = "/eagle/SYNAPS-I/segmentation/env_dino_cellpose"
-
-    #     env = os.environ.copy()
-    #     env.update({
-    #         "PATH": f"{venv_path}/bin:{env.get('PATH', '')}",
-    #         "HF_HUB_CACHE": "/eagle/SYNAPS-I/segmentation/.cache/huggingface",
-    #         "HF_HOME": "/eagle/SYNAPS-I/segmentation/.cache/huggingface",
-    #     })
-
-    #     tasks = [
-    #         {
-    #             "name": "cellpose_dino",
-    #             "module": "src.combine_cellpose_dino",  # batch_process — handles flat masks ✓
-    #             "args": [
-    #                 "--input-dir", input_dir,
-    #                 "--instance-masks-dir", f"{cellpose_results}/instance_masks",
-    #                 "--semantic-masks-dir", f"{dino_results}/semantic_masks",
-    #                 "--output-dir", f"{combined_output}/cellpose_dino",
-    #             ],
-    #         },
-    #         {
-    #             "name": "sam_dino",
-    #             "module": "src.combine_sam_dino",  # prompt-subdir script — handles SAM3 output ✓
-    #             "args": [
-    #                 "--input-dir", input_dir,
-    #                 "--instance-masks-dir", sam3_results,
-    #                 "--semantic-masks-dir", f"{dino_results}/semantic_masks",
-    #                 "--output-dir", f"{combined_output}/sam_dino",
-    #             ],
-    #         },
-    #     ]
-
-    #     failed = []
-    #     for combine_task in tasks:
-    #         cmd = [f"{venv_path}/bin/python", "-m", combine_task["module"]] + combine_task["args"]
-    #         print(f"Running {combine_task['name']}: {' '.join(cmd)}")
-
-    #         result = subprocess.run(
-    #             cmd,
-    #             env=env,
-    #             cwd=workdir,
-    #             stdout=subprocess.PIPE,
-    #             stderr=subprocess.PIPE,
-    #             text=True,
-    #         )
-    #         print(f"STDOUT [{combine_task['name']}]:\n{result.stdout}")
-    #         print(f"STDERR [{combine_task['name']}]:\n{result.stderr}")
-
-    #         print(f"STDOUT [{combine_task['name']}]: {result.stdout[-2000:] if result.stdout else 'None'}")
-    #         print(f"STDERR [{combine_task['name']}]: {result.stderr[-2000:] if result.stderr else 'None'}")
-
-    #         if result.returncode != 0:
-    #             print(f"FAILED [{combine_task['name']}]: return code {result.returncode}")
-    #             failed.append(combine_task["name"])
-    #         else:
-    #             print(f"SUCCESS [{combine_task['name']}]")
-
-    #     if failed:
-    #         raise RuntimeError(f"Segmentation combination failed for: {failed}")
-
-    #     return f"Segmentation combination completed in {time.time() - combine_start:.1f}s"
 
     @staticmethod
     def _combine_segmentations_wrapper(
