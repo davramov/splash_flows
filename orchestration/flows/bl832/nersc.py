@@ -2081,7 +2081,9 @@ def nersc_forge_recon_multisegment_flow(
     sam3_success = False
     dino_success = False
     data832_tiff_transfer_success = False
-    # data832_segment_transfer_success = False
+    data832_sam3_transfer_success = False
+    data832_dino_transfer_success = False
+    data832_combined_transfer_success = False
 
     # ── STEP 1: Multinode Reconstruction ─────────────────────────────────────
     logger.info(f"Using multi-node reconstruction with {num_nodes} nodes")
