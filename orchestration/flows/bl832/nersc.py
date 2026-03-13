@@ -1198,187 +1198,6 @@ exit $SEG_STATUS
             else:
                 return False
 
-    def segmentation_cellpose(
-        self,
-        recon_folder_path: str = "",
-    ) -> bool:
-        """
-        Run Cellpose segmentation at NERSC Perlmutter via SFAPI Slurm job.
-
-        :param recon_folder_path: Relative path to the reconstructed data folder,
-               e.g. 'folder_name/recYYYYMMDD_hhmmss_scanname/'
-        :return: True if the job completed successfully, False otherwise.
-        """
-        logger.info("Starting NERSC Cellpose segmentation process.")
-
-        user = self.client.user()
-        pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
-        cfs_path = "/global/cfs/cdirs/als/data_mover/8.3.2"
-        conda_env_path = f"{cfs_path}/envs/dino_demo"
-
-        seg_scripts_dir = f"{cfs_path}/tomography_segmentation_scripts/inference_v5_multiseg/forge_feb_seg_model_demo"
-        cellpose_checkpoint = f"{cfs_path}/tomography_segmentation_scripts/cellpose/petiole_model_flow0"
-
-        input_dir = f"{pscratch_path}/8.3.2/scratch/{recon_folder_path}"
-        seg_folder = recon_folder_path.replace("/rec", "/seg")
-        output_dir = f"{pscratch_path}/8.3.2/scratch/{seg_folder}/cellpose"
-
-        logger.info(f"Cellpose input dir:  {input_dir}")
-        logger.info(f"Cellpose output dir: {output_dir}")
-
-        CELLPOSE_DEFAULTS = {
-            "defaults": True,
-            "num_nodes": 10,
-            "nproc_per_node": 4,
-            "qos": "regular",
-            "account": "amsc006",
-            "constraint": "gpu&hbm80g",
-            "walltime": "00:59:00",
-        }
-        try:
-            seg_options = Variable.get("nersc-cellpose-seg-options", default={"defaults": True}, _sync=True)
-            if isinstance(seg_options, str):
-                import json
-                seg_options = json.loads(seg_options)
-        except Exception as e:
-            logger.warning(f"Could not load nersc-cellpose-seg-options: {e}. Using defaults.")
-            seg_options = {"defaults": True}
-
-        use_defaults = seg_options.get("defaults", True)
-        opts = CELLPOSE_DEFAULTS if use_defaults else {k: seg_options.get(k, v) for k, v in CELLPOSE_DEFAULTS.items()}
-
-        num_nodes = opts["num_nodes"]
-        nproc_per_node = opts["nproc_per_node"]
-        qos = opts["qos"]
-        account = opts["account"]
-        constraint = opts["constraint"]
-        walltime = opts["walltime"]
-
-        job_name = f"cellpose_{Path(recon_folder_path).name}"
-
-        job_script = f"""#!/bin/bash
-#SBATCH -q {qos}
-#SBATCH -A {account}
-#SBATCH -N {num_nodes}
-#SBATCH -C {constraint}
-#SBATCH --reservation=_CAP_MarchModCon_GPU
-#SBATCH --job-name={job_name}
-#SBATCH --time={walltime}
-#SBATCH --ntasks-per-node=1
-#SBATCH --gpus-per-node=4
-#SBATCH --cpus-per-task=128
-#SBATCH --output={pscratch_path}/tomo_seg_logs/%x_%j.out
-#SBATCH --error={pscratch_path}/tomo_seg_logs/%x_%j.err
-
-export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
-export MASTER_PORT=29500
-
-module load conda
-conda activate {conda_env_path}
-
-HF_HOME_ROOT="{cfs_path}/.cache/huggingface"
-mkdir -p "${{HF_HOME_ROOT}}/hub" "${{HF_HOME_ROOT}}/datasets"
-export HF_HOME="${{HF_HOME_ROOT}}"
-export HF_HUB_CACHE="${{HF_HOME_ROOT}}/hub"
-export TRANSFORMERS_CACHE="${{HF_HUB_CACHE}}"
-export HF_DATASETS_CACHE="${{HF_HOME_ROOT}}/datasets"
-
-chmod -R 2775 "{cfs_path}/tomography_segmentation_scripts/.cache" 2>/dev/null || true
-chmod -R 2775 "${{HF_HOME_ROOT}}" 2>/dev/null || true
-
-mkdir -p {output_dir}
-mkdir -p {pscratch_path}/tomo_seg_logs
-
-echo "============================================================"
-echo "CELLPOSE SEGMENTATION STARTED: $(date)"
-echo "============================================================"
-echo "Master: $MASTER_ADDR:$MASTER_PORT"
-echo "Nodes: $SLURM_JOB_NODELIST"
-echo "Job ID: $SLURM_JOB_ID"
-echo "Input:  {input_dir}"
-echo "Output: {output_dir}"
-echo "============================================================"
-
-NUM_IMAGES=$(ls {input_dir}/*.tif* 2>/dev/null | wc -l)
-echo "Images to process: ${{NUM_IMAGES}}"
-
-START_TIME=$(date +%s)
-
-cd {seg_scripts_dir}
-
-export TORCH_DISTRIBUTED_DEBUG=DETAIL
-export NCCL_DEBUG=INFO
-export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
-
-srun --ntasks-per-node=1 --gpus-per-task=4 \\
-  torchrun \\
-    --nnodes={num_nodes} \\
-    --nproc_per_node={nproc_per_node} \\
-    --rdzv_id=$SLURM_JOB_ID \\
-    --rdzv_backend=c10d \\
-    --rdzv_endpoint=$MASTER_ADDR:$MASTER_PORT \\
-    -m src.inference_cellpose_v3 \\
-    --input-dir "{input_dir}" \\
-    --output-dir "{output_dir}" \\
-    --finetuned-checkpoint "{cellpose_checkpoint}" \\
-    --save-overlay
-
-SEG_STATUS=$?
-
-END_TIME=$(date +%s)
-DURATION=$((END_TIME - START_TIME))
-MINUTES=$((DURATION / 60))
-SECONDS=$((DURATION % 60))
-
-echo ""
-echo "============================================================"
-echo "CELLPOSE SEGMENTATION COMPLETED: $(date)"
-echo "============================================================"
-echo "Total time: ${{MINUTES}}m ${{SECONDS}}s (${{DURATION}}s)"
-echo "Images processed: ${{NUM_IMAGES}}"
-echo "Exit status: $SEG_STATUS"
-echo "============================================================"
-
-chmod -R 2775 {output_dir} 2>/dev/null || true
-
-exit $SEG_STATUS
-"""
-        try:
-            logger.info("Submitting Cellpose segmentation job to Perlmutter.")
-            perlmutter = self.client.compute(Machine.perlmutter)
-            job = perlmutter.submit_job(job_script)
-            logger.info(f"Submitted job ID: {job.jobid}")
-
-            try:
-                job.update()
-            except Exception as update_err:
-                logger.warning(f"Initial job update failed, continuing: {update_err}")
-
-            time.sleep(60)
-            logger.info(f"Job {job.jobid} current state: {job.state}")
-
-            job.complete()
-            logger.info("Cellpose segmentation job completed successfully.")
-            return True
-
-        except Exception as e:
-            logger.error(f"Error during Cellpose segmentation job submission or completion: {e}")
-            match = re.search(r"Job not found:\s*(\d+)", str(e))
-            if match:
-                jobid = match.group(1)
-                logger.info(f"Attempting to recover job {jobid}.")
-                try:
-                    job = self.client.compute(Machine.perlmutter).job(jobid=jobid)
-                    time.sleep(30)
-                    job.complete()
-                    logger.info("Cellpose segmentation job completed successfully after recovery.")
-                    return True
-                except Exception as recovery_err:
-                    logger.error(f"Failed to recover job {jobid}: {recovery_err}")
-                    return False
-            else:
-                return False
-
     def seg_extract_regions(
         self,
         recon_folder_path: str = "",
@@ -2504,7 +2323,7 @@ def nersc_forge_recon_multisegment_flow(
     num_nodes: Optional[int] = None,
 ) -> bool:
     """
-    Transfer raw data to NERSC, run reconstruction, then run SAM3, DINO, and Cellpose
+    Transfer raw data to NERSC, run reconstruction, then run SAM3 and DINOv3
     segmentation concurrently, followed by a combination step.
 
     :param file_path: The path to the file to be processed.
@@ -2542,7 +2361,6 @@ def nersc_forge_recon_multisegment_flow(
     nersc_reconstruction_success = False
     sam3_success = False
     dino_success = False
-    # cellpose_success = False
     data832_tiff_transfer_success = False
     # data832_segment_transfer_success = False
 
@@ -2599,8 +2417,8 @@ def nersc_forge_recon_multisegment_flow(
         logger.error(f"Failed to transfer TIFFs to data832: {e}")
         data832_tiff_transfer_success = False
 
-    # ── STEP 3: SAM3 / DINO / Cellpose concurrently ──────────────────────────
-    logger.info("Submitting SAM3, DINO, and Cellpose segmentation tasks concurrently.")
+    # ── STEP 3: SAM3 / DINOv3 ──────────────────────────
+    logger.info("Submitting SAM3 and DINOv3 segmentation tasks concurrently.")
 
     sam3_future = nersc_segmentation_task.submit(
         recon_folder_path=scratch_path_tiff, config=config
@@ -2608,9 +2426,6 @@ def nersc_forge_recon_multisegment_flow(
     dino_future = nersc_segmentation_dino_task.submit(
         recon_folder_path=scratch_path_tiff, config=config
     )
-    # cellpose_future = nersc_segmentation_cellpose_task.submit(
-    #     recon_folder_path=scratch_path_tiff, config=config
-    # )
 
     # ── STEP 4: Transfer each model's output as it completes ─────────────────
     sam3_result = sam3_future.result()
@@ -2644,50 +2459,11 @@ def nersc_forge_recon_multisegment_flow(
         except Exception as e:
             logger.error(f"Failed to transfer DINO outputs to data832: {e}")
 
-    # cellpose_success = cellpose_future.result()
-    # logger.info(f"Cellpose segmentation result: {cellpose_success}")
-    # if cellpose_success:
-    #     logger.info("Transferring Cellpose segmentation outputs to data832")
-    #     cellpose_segment_path = f"{folder_name}/seg{file_name}/cellpose"
-    #     try:
-    #         data832_cellpose_transfer_success = transfer_controller.copy(
-    #             file_path=cellpose_segment_path,
-    #             source=config.nersc832_alsdev_pscratch_scratch,
-    #             destination=config.data832_scratch
-    #         )
-    #         logger.info(f"Cellpose transfer to data832 success: {data832_cellpose_transfer_success}")
-    #     except Exception as e:
-    #         logger.error(f"Failed to transfer Cellpose outputs to data832: {e}")
-
-    # any_seg_success = any([sam3_success, dino_success, cellpose_success])
     any_seg_success = any([sam3_success, dino_success])
 
-    # logger.info(f"Segmentation results — SAM3: {sam3_success}, DINO: {dino_success}, Cellpose: {cellpose_success}")
     logger.info(f"Segmentation results — SAM3: {sam3_success}, DINO: {dino_success}")
 
-    # ── STEP 5: Combine (after all three complete) ────────────────────────────
-    # if dino_success and (sam3_success or cellpose_success):
-    # if dino_success and sam3_success:
-    #     logger.info("Running segmentation combination (SAM3+DINO and Cellpose+DINO).")
-    #     combine_success = controller.combine_segmentations(recon_folder_path=scratch_path_tiff)
-    #     logger.info(f"Combination result: {combine_success}")
-    #     if combine_success:
-    #         logger.info("Transferring combined segmentation outputs to data832")
-    #         combined_segment_path = f"{folder_name}/seg{file_name}/combined"
-    #         try:
-    #             data832_combined_transfer_success = transfer_controller.copy(
-    #                 file_path=combined_segment_path,
-    #                 source=config.nersc832_alsdev_pscratch_scratch,
-    #                 destination=config.data832_scratch
-    #             )
-    #             logger.info(f"Combined transfer to data832 success: {data832_combined_transfer_success}")
-    #         except Exception as e:
-    #             logger.error(f"Failed to transfer combined outputs to data832: {e}")
-    # else:
-    #     logger.warning("Skipping combination: requires DINO plus at least one of SAM3/Cellpose.")
-
     # ── STEP 5: Combine + Extract Regions concurrently (after SAM3+DINO complete) ──
-    # if dino_success and (sam3_success or cellpose_success):
     if dino_success and sam3_success:
         logger.info("Running segmentation combination and region extraction concurrently.")
 
@@ -2775,7 +2551,6 @@ def nersc_forge_recon_multisegment_flow(
                 check_endpoint=config.data832_scratch if any([
                     data832_sam3_transfer_success,
                     data832_dino_transfer_success,
-                    # data832_cellpose_transfer_success
                 ]) else None,
                 days_from_now=1.0
             )
@@ -2795,7 +2570,6 @@ def nersc_forge_recon_multisegment_flow(
 
     if any([data832_sam3_transfer_success,
             data832_dino_transfer_success,
-            # data832_cellpose_transfer_success,
             data832_combined_transfer_success]):
         try:
             prune_controller.prune(
@@ -2813,126 +2587,10 @@ def nersc_forge_recon_multisegment_flow(
     else:
         logger.warning(
             f"Flow completed with issues: recon={nersc_reconstruction_success}, "
-            # f"sam3={sam3_success}, dino={dino_success}, cellpose={cellpose_success}"
             f"sam3={sam3_success}, dino={dino_success}"
 
         )
         return False
-
-    # sam3_result = sam3_future.result()
-    # dino_success = dino_future.result()
-    # cellpose_success = cellpose_future.result()
-
-    # # nersc_segmentation_task (SAM3) returns a dict
-    # if isinstance(sam3_result, dict):
-    #     sam3_success = sam3_result.get('success', False)
-    # else:
-    #     sam3_success = bool(sam3_result)
-
-    # logger.info(
-    #     f"Segmentation results — SAM3: {sam3_success}, DINO: {dino_success}, Cellpose: {cellpose_success}"
-    # )
-
-    # any_seg_success = any([sam3_success, dino_success, cellpose_success])
-
-    # # ── STEP 4: Combine (sync, after all three complete) ─────────────────────
-    # if dino_success and (sam3_success or cellpose_success):
-    #     logger.info("Running segmentation combination (SAM3+DINO and Cellpose+DINO).")
-    #     combine_success = controller.combine_segmentations(
-    #         recon_folder_path=scratch_path_tiff
-    #     )
-    #     logger.info(f"Combination result: {combine_success}")
-    # else:
-    #     logger.warning("Skipping combination: requires DINO plus at least one of SAM3/Cellpose.")
-
-    # # ── STEP 5: Transfer segmentation outputs to data832 ─────────────────────
-    # if any_seg_success:
-    #     logger.info("Transferring segmentation outputs from NERSC pscratch to data832")
-    #     try:
-    #         data832_segment_transfer_success = transfer_controller.copy(
-    #             file_path=scratch_path_segment,
-    #             source=config.nersc832_alsdev_pscratch_scratch,
-    #             destination=config.data832_scratch
-    #         )
-    #         logger.info(f"Transfer segmented data to data832 success: {data832_segment_transfer_success}")
-    #     except Exception as e:
-    #         logger.error(f"Failed to transfer segmented data to data832: {e}")
-    #         data832_segment_transfer_success = False
-
-    # # ── STEP 6: Pruning ───────────────────────────────────────────────────────
-    # logger.info("Scheduling file pruning tasks.")
-    # prune_controller = get_prune_controller(prune_type=PruneMethod.GLOBUS, config=config)
-
-    # logger.info("Scheduling pruning of NERSC pscratch raw data.")
-    # try:
-    #     prune_controller.prune(
-    #         file_path=f"{folder_name}/{path.name}",
-    #         source_endpoint=config.nersc832_alsdev_pscratch_raw,
-    #         check_endpoint=None,
-    #         days_from_now=1.0
-    #     )
-    # except Exception as e:
-    #     logger.warning(f"Failed to schedule raw data pruning: {e}")
-
-    # if nersc_reconstruction_success:
-    #     logger.info("Scheduling pruning of NERSC pscratch reconstruction data.")
-    #     try:
-    #         prune_controller.prune(
-    #             file_path=scratch_path_tiff,
-    #             source_endpoint=config.nersc832_alsdev_pscratch_scratch,
-    #             check_endpoint=config.data832_scratch if data832_tiff_transfer_success else None,
-    #             days_from_now=1.0
-    #         )
-    #     except Exception as e:
-    #         logger.warning(f"Failed to schedule reconstruction data pruning: {e}")
-
-    # if any_seg_success:
-    #     logger.info("Scheduling pruning of NERSC pscratch segmentation data.")
-    #     try:
-    #         prune_controller.prune(
-    #             file_path=scratch_path_segment,
-    #             source_endpoint=config.nersc832_alsdev_pscratch_scratch,
-    #             check_endpoint=config.data832_scratch if data832_segment_transfer_success else None,
-    #             days_from_now=1.0
-    #         )
-    #     except Exception as e:
-    #         logger.warning(f"Failed to schedule segmentation data pruning: {e}")
-
-    # if data832_tiff_transfer_success:
-    #     logger.info("Scheduling pruning of data832 scratch reconstruction TIFF data.")
-    #     try:
-    #         prune_controller.prune(
-    #             file_path=scratch_path_tiff,
-    #             source_endpoint=config.data832_scratch,
-    #             check_endpoint=None,
-    #             days_from_now=30.0
-    #         )
-    #     except Exception as e:
-    #         logger.warning(f"Failed to schedule data832 tiff pruning: {e}")
-
-    # if data832_segment_transfer_success:
-    #     logger.info("Scheduling pruning of data832 scratch segmentation data.")
-    #     try:
-    #         prune_controller.prune(
-    #             file_path=scratch_path_segment,
-    #             source_endpoint=config.data832_scratch,
-    #             check_endpoint=None,
-    #             days_from_now=30.0
-    #         )
-    #     except Exception as e:
-    #         logger.warning(f"Failed to schedule data832 segment pruning: {e}")
-
-    # # TODO: ingest to scicat
-
-    # if nersc_reconstruction_success and any_seg_success:
-    #     logger.info("NERSC reconstruction + multi-segmentation flow completed successfully.")
-    #     return True
-    # else:
-    #     logger.warning(
-    #         f"Flow completed with issues: recon={nersc_reconstruction_success}, "
-    #         f"sam3={sam3_success}, dino={dino_success}, cellpose={cellpose_success}"
-    #     )
-    #     return False
 
 
 @flow(name="nersc_streaming_flow", on_cancellation=[cancellation_hook])
@@ -3128,25 +2786,6 @@ def nersc_segmentation_dino_task(
         logger.error("DINO segmentation failed.")
     else:
         logger.info("DINO segmentation successful.")
-    return success
-
-
-@task(name="nersc_segmentation_cellpose_task")
-def nersc_segmentation_cellpose_task(
-    recon_folder_path: str,
-    config: Optional[Config832] = None,
-) -> bool:
-    logger = get_run_logger()
-    if config is None:
-        logger.info("No config provided, using default Config832.")
-        config = Config832()
-    tomography_controller = get_controller(hpc_type=HPC.NERSC, config=config)
-    logger.info(f"Starting NERSC Cellpose segmentation task for {recon_folder_path=}")
-    success = tomography_controller.segmentation_cellpose(recon_folder_path=recon_folder_path)
-    if not success:
-        logger.error("Cellpose segmentation failed.")
-    else:
-        logger.info("Cellpose segmentation successful.")
     return success
 
 
