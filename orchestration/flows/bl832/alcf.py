@@ -715,7 +715,7 @@ class ALCFTomographyHPCController(TomographyHPCController):
         workdir: str = "/eagle/SYNAPS-I/segmentation/scripts/inference_latest/forge_feb_seg_model_demo",
         dilate_px: int = 5,
     ) -> str:
-        """ 
+        """
         Wrapper function to combine segmentation results from SAM+DINO.
 
         :param input_dir: Directory containing input data for segmentation.
