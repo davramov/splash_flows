@@ -715,6 +715,17 @@ class ALCFTomographyHPCController(TomographyHPCController):
         workdir: str = "/eagle/SYNAPS-I/segmentation/scripts/inference_latest/forge_feb_seg_model_demo",
         dilate_px: int = 5,
     ) -> str:
+        """ 
+        Wrapper function to combine segmentation results from SAM+DINO.
+
+        :param input_dir: Directory containing input data for segmentation.
+        :param dino_results: Directory containing DINO segmentation results.
+        :param sam3_results: Directory containing SAM3 segmentation results.
+        :param combined_output: Directory to save combined segmentation outputs.
+        :param workdir: Working directory for the combination script.
+        :param dilate_px: Number of pixels to dilate the SAM masks for better coverage in the combination step.
+        :return: Confirmation message upon completion.
+        """
         import os
         import subprocess
         import time
@@ -1187,7 +1198,7 @@ def alcf_forge_recon_multisegment_flow(
 ) -> bool:
     """
     Transfer raw data to ALCF, run multinode reconstruction synchronously,
-    then run SAM3, DINO, and Cellpose segmentation concurrently.
+    then run SAM3 and DINO segmentation concurrently.
 
     :param file_path: Path to the raw .h5 file (relative), e.g. 'folder/20250101_scan.h5'
     :param config: Optional Config832 instance.
@@ -1251,8 +1262,8 @@ def alcf_forge_recon_multisegment_flow(
     )
     logger.info(f"TIFF transfer to data832: {data832_tiff_transfer_success}")
 
-    # ── STEP 4: SAM3 / DINO / Cellpose concurrently ──────────────────────────
-    logger.info("Submitting SAM3, DINO, and Cellpose segmentation tasks concurrently.")
+    # ── STEP 4: SAM3 / DINO concurrently ──────────────────────────
+    logger.info("Submitting SAM3 and DINO segmentation tasks concurrently.")
 
     sam3_future = alcf_segmentation_sam3_task.submit(
         recon_folder_path=scratch_path_tiff, config=config
@@ -1277,7 +1288,7 @@ def alcf_forge_recon_multisegment_flow(
         )
         logger.info(f"Combination result: {combine_success}")
     else:
-        logger.warning("Skipping combination: requires DINO plus at least one of SAM3/Cellpose.")
+        logger.warning("Skipping combination: requires DINO plus SAM3.")
 
     # ── STEP 6: Transfer segmentation outputs to data832 ─────────────────────
     segment_transfer_success = False
@@ -1379,6 +1390,13 @@ def alcf_segmentation_dino_task(
     recon_folder_path: str,
     config: Optional[Config832] = None,
 ) -> bool:
+    """
+    Run DINO segmentation task at ALCF.
+
+    :param recon_folder_path: Path to the reconstructed data folder to be processed.
+    :param config: Configuration object for the flow.
+    :return: True if the task completed successfully, False otherwise.
+    """
     logger = get_run_logger()
     if config is None:
         config = Config832()
@@ -1394,6 +1412,13 @@ def alcf_combine_segmentations_task(
     recon_folder_path: str,
     config: Optional[Config832] = None,
 ) -> bool:
+    """
+    Run segmentation combination task at ALCF.
+
+    :param recon_folder_path: Path to the reconstructed data folder to be processed.
+    :param config: Configuration object for the flow.
+    :return: True if the task completed successfully, False otherwise.
+    """
     logger = get_run_logger()
     if config is None:
         config = Config832()
