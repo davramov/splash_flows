@@ -587,124 +587,6 @@ date
             else:
                 return False
 
-    def build_multi_resolution_optimize(
-        self,
-        file_path: str = "",
-        num_nodes: int = 4,
-    ) -> bool:
-        """
-        Use NERSC to make multiresolution version of tomography results with multi-node scaling.
-        """
-        logger.info("Starting NERSC multiresolution process (multi-node).")
-
-        user = self.client.user()
-        pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
-
-        multires_image = self.config.ghcr_images832["multires_image"]
-        recon_scripts_dir = self.config.nersc832_alsdev_recon_scripts.root_path
-
-        path = Path(file_path)
-        folder_name = path.parent.name
-        file_name = path.stem
-
-        recon_path = f"scratch/{folder_name}/rec{file_name}/"
-        raw_path = f"raw/{folder_name}/{file_name}.h5"
-
-        # Scale time with nodes (less time needed with more workers)
-        walltime = "0:30:00" if num_nodes <= 4 else "0:15:00"
-
-        job_script = f"""#!/bin/bash
-#SBATCH -q realtime
-#SBATCH -A als
-#SBATCH -C cpu
-#SBATCH --job-name=tomo_multires_{folder_name}_{file_name}
-#SBATCH --output={pscratch_path}/tomo_recon_logs/%x_%j.out
-#SBATCH --error={pscratch_path}/tomo_recon_logs/%x_%j.err
-#SBATCH -N {num_nodes}
-#SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=128
-#SBATCH --time={walltime}
-#SBATCH --exclusive
-
-date
-echo "Starting multi-node Zarr conversion with {num_nodes} nodes"
-
-# Get scheduler node
-SCHEDULER_NODE=$(hostname)
-SCHEDULER_PORT=8786
-SCHEDULER_ADDR="tcp://$SCHEDULER_NODE:$SCHEDULER_PORT"
-
-echo "Scheduler will run on: $SCHEDULER_ADDR"
-
-# Start Dask scheduler on first node
-srun --nodes=1 --ntasks=1 --exclusive podman-hpc run \\
-    --volume {pscratch_path}/8.3.2:/alsdata \\
-    {multires_image} \\
-    dask scheduler --port $SCHEDULER_PORT &
-
-SCHEDULER_PID=$!
-sleep 10  # Give scheduler time to start
-
-# Start Dask workers on all nodes
-for i in $(seq 1 {num_nodes}); do
-    srun --nodes=1 --ntasks=1 --exclusive podman-hpc run \\
-        --env NUMEXPR_MAX_THREADS=128 \\
-        --env OMP_NUM_THREADS=128 \\
-        --volume {pscratch_path}/8.3.2:/alsdata \\
-        {multires_image} \\
-        dask worker $SCHEDULER_ADDR --nthreads 32 --nworkers 4 --memory-limit 60GB &
-done
-
-sleep 15  # Give workers time to connect
-
-# Run the conversion script, connecting to the cluster
-srun --nodes=1 --ntasks=1 podman-hpc run \\
-    --volume {recon_scripts_dir}/tiff_to_zarr_multinode.py:/alsuser/tiff_to_zarr_multinode.py \\
-    --volume {pscratch_path}/8.3.2:/alsdata \\
-    --volume {pscratch_path}/8.3.2:/alsuser/ \\
-    {multires_image} \\
-    bash -c "python tiff_to_zarr_multinode.py {recon_path} --raw_file {raw_path} --scheduler $SCHEDULER_ADDR"
-wait
-date
-"""
-        try:
-            logger.info("Submitting Tiff to Zarr job script to Perlmutter.")
-            perlmutter = self.client.compute(Machine.perlmutter)
-            job = perlmutter.submit_job(job_script)
-            logger.info(f"Submitted job ID: {job.jobid}")
-
-            try:
-                job.update()
-            except Exception as update_err:
-                logger.warning(f"Initial job update failed, continuing: {update_err}")
-
-            time.sleep(60)
-            logger.info(f"Job {job.jobid} current state: {job.state}")
-
-            job.complete()  # Wait until the job completes
-            logger.info("Reconstruction job completed successfully.")
-
-            return True
-
-        except Exception as e:
-            logger.warning(f"Error during job submission or completion: {e}")
-            match = re.search(r"Job not found:\s*(\d+)", str(e))
-
-            if match:
-                jobid = match.group(1)
-                logger.info(f"Attempting to recover job {jobid}.")
-                try:
-                    job = self.client.perlmutter.job(jobid=jobid)
-                    time.sleep(30)
-                    job.complete()
-                    logger.info("Reconstruction job completed successfully after recovery.")
-                    return True
-                except Exception as recovery_err:
-                    logger.error(f"Failed to recover job {jobid}: {recovery_err}")
-                    return False
-            else:
-                return False
-
     def segmentation_sam3(
         self,
         recon_folder_path: str = "",
@@ -2497,7 +2379,7 @@ def nersc_multiresolution_task(
         config=config
     )
     logger.info(f"Starting NERSC multiresolution task for {file_path=}")
-    nersc_multiresolution_success = tomography_controller.build_multi_resolution_optimize(
+    nersc_multiresolution_success = tomography_controller.build_multi_resolution(
         file_path=file_path,
     )
     if not nersc_multiresolution_success:
@@ -2505,36 +2387,6 @@ def nersc_multiresolution_task(
     else:
         logger.info("Multiresolution Successful.")
     return nersc_multiresolution_success
-
-
-@task(name="nersc_tiff_to_zarr_task")
-def nersc_tiff_to_zarr_task(
-    file_path: str,
-    config: Optional[Config832] = None,
-) -> bool:
-    """
-    Run tiff-to-zarr (single-node) multiresolution task at NERSC.
-
-    :param file_path: Path to the raw .h5 file (used to derive recon path).
-    :param config: Configuration object for the flow.
-    :return: True if the task completed successfully, False otherwise.
-    """
-    logger = get_run_logger()
-    if config is None:
-        logger.info("No config provided, using default Config832.")
-        config = Config832()
-
-    logger.info("Initializing NERSC Tomography HPC Controller.")
-    tomography_controller = get_controller(hpc_type=HPC.NERSC, config=config)
-
-    logger.info(f"Starting NERSC tiff-to-zarr task for {file_path=}")
-    success = tomography_controller.build_multi_resolution(file_path=file_path)
-
-    if not success:
-        logger.error("Tiff-to-zarr failed.")
-    else:
-        logger.info("Tiff-to-zarr successful.")
-    return success
 
 
 @flow(name="nersc_multiresolution_integration_test", flow_run_name="nersc_multiresolution_integration_test")
