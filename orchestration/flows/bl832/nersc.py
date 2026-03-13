@@ -705,7 +705,7 @@ date
             else:
                 return False
 
-    def segmentation(
+    def segmentation_sam3(
         self,
         recon_folder_path: str = "",
         num_nodes: int = 42,
@@ -2031,8 +2031,8 @@ def nersc_forge_recon_segment_flow(
             data832_tiff_transfer_success = False
 
         # STEP 4: Run the Segmentation Task at NERSC
-        logger.info(f"Starting NERSC segmentation task for {scratch_path_tiff=}")
-        seg_result = nersc_segmentation_task(
+        logger.info(f"Starting NERSC SAM3 segmentation task for {scratch_path_tiff=}")
+        seg_result = nersc_segmentation_sam3_task(
             recon_folder_path=scratch_path_tiff,
             config=config
         )
@@ -2257,7 +2257,7 @@ def nersc_forge_recon_multisegment_flow(
     # ── STEP 3: SAM3 / DINOv3 ──────────────────────────
     logger.info("Submitting SAM3 and DINOv3 segmentation tasks concurrently.")
 
-    sam3_future = nersc_segmentation_task.submit(
+    sam3_future = nersc_segmentation_sam3_task.submit(
         recon_folder_path=scratch_path_tiff, config=config
     )
     dino_future = nersc_segmentation_dino_task.submit(
@@ -2300,9 +2300,9 @@ def nersc_forge_recon_multisegment_flow(
 
     logger.info(f"Segmentation results — SAM3: {sam3_success}, DINO: {dino_success}")
 
-    # ── STEP 5: Combine + Extract Regions concurrently (after SAM3+DINO complete) ──
+    # ── STEP 5: Combine Segmentations (after SAM3+DINO complete) ──
     if dino_success and sam3_success:
-        logger.info("Running segmentation combination and region extraction concurrently.")
+        logger.info("Running segmentation combination.")
 
         combine_future = nersc_combine_segmentations_task.submit(
             recon_folder_path=scratch_path_tiff, config=config
@@ -2556,8 +2556,8 @@ def nersc_multiresolution_integration_test() -> bool:
     return flow_success
 
 
-@task(name="nersc_segmentation_task")
-def nersc_segmentation_task(
+@task(name="nersc_segmentation_sam3_task")
+def nersc_segmentation_sam3_task(
     recon_folder_path: str,
     config: Optional[Config832] = None,
 ) -> bool:
@@ -2580,7 +2580,7 @@ def nersc_segmentation_task(
         config=config
     )
     logger.info(f"Starting NERSC segmentation task for {recon_folder_path=}")
-    nersc_segmentation_success = tomography_controller.segmentation(
+    nersc_segmentation_success = tomography_controller.segmentation_sam3(
         recon_folder_path=recon_folder_path,
     )
     if not nersc_segmentation_success:
@@ -2628,17 +2628,17 @@ def nersc_combine_segmentations_task(
     return success
 
 
-@flow(name="nersc_segmentation_integration_test", flow_run_name="nersc_segmentation_integration_test")
-def nersc_segmentation_integration_test() -> bool:
+@flow(name="nersc_segmentation_sam3_integration_test", flow_run_name="nersc_segmentation_sam3_integration_test")
+def nersc_segmentation_sam3_integration_test() -> bool:
     """
-    Integration test for the NERSC segmentation task.
+    Integration test for the NERSC SAM3 segmentation task.
 
     :return: True if the segmentation task completed successfully, False otherwise.
     """
     logger = get_run_logger()
-    logger.info("Starting NERSC segmentation integration test.")
+    logger.info("Starting NERSC SAM3 segmentation integration test.")
     recon_folder_path = 'synaps-i/rec20211222_125057_petiole4'  # 'test'  #
-    flow_success = nersc_segmentation_task(
+    flow_success = nersc_segmentation_sam3_task(
         recon_folder_path=recon_folder_path,
         config=Config832()
     )
