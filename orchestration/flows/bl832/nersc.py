@@ -207,7 +207,7 @@ date
     def reconstruct_multinode(
         self,
         file_path: str = "",
-        num_nodes: int = 16,
+        num_nodes: int = 2,
     ) -> bool:
 
         """
@@ -254,15 +254,14 @@ date
         if num_nodes > 8:
             qos = "premium"
 
-#SBATCH -q regular
-#SBATCH -A amsc006
-#SBATCH --reservation=_CAP_MarchModCon_CPU
-
+# If using with a reservation:
+# SBATCH -q regular
+# SBATCH --reservation=_CAP_MarchModCon_CPU
+# SBATCH -A amsc006
         # IMPORTANT: job script must be deindented to the leftmost column or it will fail immediately
         job_script = f"""#!/bin/bash
-#SBATCH -q regular # {qos}
-#SBATCH -A amsc006 # als
-#SBATCH --reservation=_CAP_MarchModCon_CPU
+#SBATCH -q {qos}
+#SBATCH -A als
 #SBATCH -C cpu
 #SBATCH --job-name=tomo_recon_{folder_name}_{file_name}
 #SBATCH --output={pscratch_path}/tomo_recon_logs/%x_%j.out
@@ -600,7 +599,7 @@ date
 
         user = self.client.user()
         pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
-        
+
         multires_image = self.config.ghcr_images832["multires_image"]
         recon_scripts_dir = self.config.nersc832_alsdev_recon_scripts.root_path
 
@@ -706,7 +705,6 @@ date
             else:
                 return False
 
-
     def segmentation(
         self,
         recon_folder_path: str = "",
@@ -721,7 +719,7 @@ date
         pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
         cfs_path = "/global/cfs/cdirs/als/data_mover/8.3.2"
         conda_env_path = f"{cfs_path}/envs/sam3-py311"
-        
+
         # Paths
         # seg_scripts_dir = f"{cfs_path}/tomography_segmentation_scripts/inference_v4/forge_feb_seg_model_demo/"
         seg_scripts_dir = f"{cfs_path}/tomography_segmentation_scripts/inference_latest/forge_feb_seg_model_demo/"
@@ -730,11 +728,11 @@ date
         bpe_path = f"{checkpoints_dir}/bpe_simple_vocab_16e6.txt.gz"
         original_checkpoint = f"{checkpoints_dir}/sam3.pt"
         # finetuned_checkpoint = f"{checkpoints_dir}/checkpoint_v3.pt"
-        
+
         input_dir = f"{pscratch_path}/8.3.2/scratch/{recon_folder_path}"
         output_folder = recon_folder_path.replace('/rec', '/seg')
         output_dir = f"{pscratch_path}/8.3.2/scratch/{output_folder}/sam3"
-        
+
         logger.info(f"Input directory: {input_dir}")
         logger.info(f"Output directory: {output_dir}")
         logger.info(f"Conda environment: {conda_env_path}")
@@ -748,7 +746,7 @@ date
         default_account = "als"
         default_constraint = "gpu"
         default_checkpoint = "checkpoint_v6.pt"
-        
+
         # Load options from Prefect variable
         try:
             seg_options = Variable.get("nersc-segmentation-options", default={})
@@ -758,10 +756,10 @@ date
         except Exception as e:
             logger.warning(f"Could not load nersc-segmentation-options variable: {e}. Using defaults.")
             seg_options = {"defaults": True}
-        
+
         # Determine which values to use
         use_defaults = seg_options.get("defaults", True)
-        
+
         if use_defaults:
             logger.info("Using hardcoded default segmentation parameters")
             batch_size = default_batch_size
@@ -782,9 +780,9 @@ date
             account = seg_options.get("account", default_account)
             constraint = seg_options.get("constraint", default_constraint)
             checkpoint = seg_options.get("checkpoint", default_checkpoint)
-        # batch_size = 16        
+        # batch_size = 16
         # nproc_per_node = 4
-        
+
         finetuned_checkpoint = f"{checkpoints_dir}/{checkpoint}"
 
         # Format confidence for command line (handles both single value and list)
@@ -793,15 +791,14 @@ date
         else:
             confidence_str = str(confidence)
 
-        # prompts = ["Cortex", "Phloem Fibers", "Air-based Pith cells", 
-                # "Water-based Pith cells", "Xylem vessels"]
+        # prompts = ["Cortex", "Phloem Fibers", "Air-based Pith cells",
+        # "Water-based Pith cells", "Xylem vessels"]
         # prompts_str = " ".join([f'"{p}"' for p in prompts])
-        
+
         # if num_nodes <= 4:
         #     qos = "realtime"
         # else:
         #     qos = "regular"
-# --prompts 'Cortex' 'Phloem Fibers' 'Phloem' 'Hydrated Xylem vessels' 'Air-based Pith cells' 'Water-based Pith cells' 'Dehydrated Xylem vessels' \
 
         walltime = "00:59:00"
         job_name = f"seg_{Path(recon_folder_path).name}"
@@ -814,9 +811,9 @@ date
 #SBATCH -C {constraint} # gpu
 #SBATCH --job-name={job_name}
 #SBATCH --time={walltime}
-#SBATCH --ntasks-per-node=1           
-#SBATCH --gpus-per-node=4             
-#SBATCH --cpus-per-task=128           
+#SBATCH --ntasks-per-node=1
+#SBATCH --gpus-per-node=4
+#SBATCH --cpus-per-task=128
 #SBATCH --output={pscratch_path}/tomo_seg_logs/%x_%j.out
 #SBATCH --error={pscratch_path}/tomo_seg_logs/%x_%j.err
 
@@ -934,37 +931,37 @@ chmod -R 2775 ${{OUTPUT_DIR}} 2>/dev/null || true
 
 exit $SEG_STATUS
 """
-        
+
         try:
             logger.info("Submitting segmentation job to Perlmutter (v5).")
             perlmutter = self.client.compute(Machine.perlmutter)
-            
+
             # Ensure directories exist
             logger.info("Creating necessary directories...")
             perlmutter.run(f"mkdir -p {pscratch_path}/tomo_seg_logs")
             perlmutter.run(f"mkdir -p {output_dir}")
-            
+
             # Submit job
             job = perlmutter.submit_job(job_script)
             logger.info(f"Submitted job ID: {job.jobid}")
-            
+
             # Initial update
             try:
                 job.update()
             except Exception as update_err:
                 logger.warning(f"Initial job update failed, continuing: {update_err}")
-            
+
             # Wait briefly before polling
             time.sleep(60)
             logger.info(f"Job {job.jobid} current state: {job.state}")
-            
+
             # Wait for completion
             job.complete()
             logger.info("Segmentation job completed successfully.")
-            
+
             # Fetch timing data from output file
             timing = self._fetch_seg_timing_from_output(perlmutter, pscratch_path, job.jobid, job_name)
-            
+
             if timing:
                 logger.info("=" * 60)
                 logger.info("SEGMENTATION TIMING BREAKDOWN")
@@ -975,19 +972,19 @@ exit $SEG_STATUS
                 logger.info(f"  Throughput:          {timing.get('throughput', 'N/A')} images/min")
                 logger.info(f"  Exit status:         {timing.get('exit_status', 'N/A')}")
                 logger.info("=" * 60)
-            
+
             return {
                 "success": True,
                 "job_id": job.jobid,
                 "timing": timing,
                 "output_dir": output_dir
             }
-            
+
         except Exception as e:
             logger.error(f"Error during segmentation job: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            
+
             # Attempt recovery
             match = re.search(r"Job not found:\s*(\d+)", str(e))
             if match:
@@ -998,7 +995,7 @@ exit $SEG_STATUS
                     time.sleep(30)
                     job.complete()
                     logger.info("Segmentation job completed after recovery.")
-                    
+
                     timing = self._fetch_seg_timing_from_output(perlmutter, pscratch_path, jobid, job_name)
                     return {
                         "success": True,
@@ -1008,7 +1005,7 @@ exit $SEG_STATUS
                     }
                 except Exception as recovery_err:
                     logger.error(f"Failed to recover job {jobid}: {recovery_err}")
-            
+
             return {
                 "success": False,
                 "job_id": None,
@@ -1381,7 +1378,7 @@ exit $SEG_STATUS
                     return False
             else:
                 return False
-            
+
     def seg_extract_regions(
         self,
         recon_folder_path: str = "",
@@ -1712,7 +1709,7 @@ exit 0
     def _fetch_seg_timing_from_output(self, perlmutter, pscratch_path: str, job_id: str, job_name: str) -> dict:
         """
         Fetch and parse timing data from the SLURM output file.
-        
+
         :param perlmutter: SFAPI compute object for Perlmutter
         :param pscratch_path: Path to the user's pscratch directory
         :param job_id: SLURM job ID
@@ -1720,11 +1717,11 @@ exit 0
         :return: Dictionary with timing breakdown
         """
         output_file = f"{pscratch_path}/tomo_seg_logs/{job_name}_{job_id}.out"
-        
+
         try:
             # Use SFAPI to read the output file
             result = perlmutter.run(f"cat {output_file}")
-            
+
             # Handle different result types
             if isinstance(result, str):
                 output = result
@@ -1734,15 +1731,15 @@ exit 0
                 output = result.stdout
             else:
                 output = str(result)
-            
-            logger.info(f"Job output file contents (last 50 lines):")
+
+            logger.info("Job output file contents (last 50 lines):")
             lines = output.strip().split('\n')
             for line in lines[-50:]:
                 logger.info(f"  {line}")
-            
+
             # Parse timing data from the output
             timing = {}
-            
+
             for line in lines:
                 if "Total time:" in line:
                     # Extract: "Total time: 5m 23s (323s)"
@@ -1750,39 +1747,38 @@ exit 0
                     if match:
                         timing['total_time'] = f"{match.group(1)}m {match.group(2)}s"
                         timing['total_seconds'] = int(match.group(3))
-                
+
                 elif "Images processed:" in line:
                     # Extract: "Images processed: 100"
                     match = re.search(r'Images processed:\s+(\d+)', line)
                     if match:
                         timing['num_images'] = int(match.group(1))
-                
+
                 elif "Time per image:" in line:
                     # Extract: "Time per image: 3.230s"
                     match = re.search(r'Time per image:\s+([\d.]+)s', line)
                     if match:
                         timing['time_per_image'] = f"{match.group(1)}s"
-                
+
                 elif "Throughput:" in line:
                     # Extract: "Throughput: 18.58 images/minute"
                     match = re.search(r'Throughput:\s+([\d.]+)\s+images/minute', line)
                     if match:
                         timing['throughput'] = float(match.group(1))
-                
+
                 elif "Exit status:" in line:
                     # Extract: "Exit status: 0"
                     match = re.search(r'Exit status:\s+(\d+)', line)
                     if match:
                         timing['exit_status'] = int(match.group(1))
-            
+
             return timing if timing else None
-            
+
         except Exception as e:
             logger.warning(f"Error fetching timing data from output: {e}")
             import traceback
             logger.warning(traceback.format_exc())
             return None
-
 
     def start_streaming_service(
         self,
@@ -2366,7 +2362,7 @@ def nersc_forge_recon_segment_flow(
         logger.info("Reconstruction Successful.")
 
         # STEP 3: Send reconstructed data (tiff) to data832
-        logger.info(f"Transferring reconstructed TIFFs from NERSC pscratch to data832")
+        logger.info("Transferring reconstructed TIFFs from NERSC pscratch to data832")
         try:
             data832_tiff_transfer_success = transfer_controller.copy(
                 file_path=scratch_path_tiff,
@@ -2407,7 +2403,7 @@ def nersc_forge_recon_segment_flow(
             logger.info("Segmentation at NERSC Successful")
 
             # STEP 5: Transfer segmented data to data832
-            logger.info(f"Transferring segmented data from NERSC pscratch to data832")
+            logger.info("Transferring segmented data from NERSC pscratch to data832")
             try:
                 data832_segment_transfer_success = transfer_controller.copy(
                     file_path=scratch_path_segment,
@@ -2546,9 +2542,9 @@ def nersc_forge_recon_multisegment_flow(
     nersc_reconstruction_success = False
     sam3_success = False
     dino_success = False
-    cellpose_success = False
+    # cellpose_success = False
     data832_tiff_transfer_success = False
-    data832_segment_transfer_success = False
+    # data832_segment_transfer_success = False
 
     # ── STEP 1: Multinode Reconstruction ─────────────────────────────────────
     logger.info(f"Using multi-node reconstruction with {num_nodes} nodes")
@@ -2666,7 +2662,6 @@ def nersc_forge_recon_multisegment_flow(
     # any_seg_success = any([sam3_success, dino_success, cellpose_success])
     any_seg_success = any([sam3_success, dino_success])
 
-
     # logger.info(f"Segmentation results — SAM3: {sam3_success}, DINO: {dino_success}, Cellpose: {cellpose_success}")
     logger.info(f"Segmentation results — SAM3: {sam3_success}, DINO: {dino_success}")
 
@@ -2691,7 +2686,7 @@ def nersc_forge_recon_multisegment_flow(
     # else:
     #     logger.warning("Skipping combination: requires DINO plus at least one of SAM3/Cellpose.")
 
-        # ── STEP 5: Combine + Extract Regions concurrently (after SAM3+DINO complete) ──
+    # ── STEP 5: Combine + Extract Regions concurrently (after SAM3+DINO complete) ──
     # if dino_success and (sam3_success or cellpose_success):
     if dino_success and sam3_success:
         logger.info("Running segmentation combination and region extraction concurrently.")
@@ -3065,7 +3060,6 @@ def nersc_tiff_to_zarr_task(
     return success
 
 
-
 @flow(name="nersc_multiresolution_integration_test", flow_run_name="nersc_multiresolution_integration_test")
 def nersc_multiresolution_integration_test() -> bool:
     """
@@ -3244,7 +3238,6 @@ if __name__ == "__main__":
     # nersc_forge_recon_segment_flow('/global/raw/raw/DD-00842_hexemer/20260212_110324_petiole24.h5')
     # result = nersc_segmentation_integration_test()
     # print(f"Integration test result: {result}")
-
 
 
 # if __name__ == "__main__":
