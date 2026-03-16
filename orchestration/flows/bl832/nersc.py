@@ -1,5 +1,6 @@
 import datetime
 from dotenv import load_dotenv
+import enum
 import json
 import logging
 import os
@@ -15,13 +16,15 @@ from sfapi_client.compute import Machine
 from typing import Any, Optional
 
 from orchestration.flows.bl832.config import Config832
+
 from orchestration.flows.bl832.job_controller import get_controller, HPC, TomographyHPCController
-from orchestration.prune_controller import get_prune_controller, PruneMethod
-from orchestration.transfer_controller import get_transfer_controller, CopyMethod
 from orchestration.flows.bl832.streaming_mixin import (
     NerscStreamingMixin, SlurmJobBlock, cancellation_hook, monitor_streaming_job, save_block
 )
+from orchestration.globus.token import get_access_token_confidential, DEFAULT_TOKEN_FILE
 from orchestration.prefect import schedule_prefect_flow
+from orchestration.prune_controller import get_prune_controller, PruneMethod
+from orchestration.transfer_controller import get_transfer_controller, CopyMethod
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -62,6 +65,35 @@ def _load_job_options(variable_name: str, config_settings: dict[str, Any]) -> di
     logger.info(f"Overriding config defaults with variable options for '{variable_name}'")
     overrides = {k: v for k, v in options.items() if k != "defaults"}
     return {**config_settings, **overrides}
+class NERSCLoginMethod(enum.Enum):
+    """Selects which NERSC API login method to use when creating a NERSC client.
+
+    Each method corresponds to a different set of credentials and API base URL.
+    """
+
+    SFAPI = "sfapi"
+    """Standard Superfacility API via Iris-registered OAuth2 credentials."""
+
+    IRIAPI = "iriapi"
+    """Integrated Research Infrastructure API via IRI-registered OAuth2 credentials."""
+
+
+# Applies only to NERSCLoginMethod.IRIAPI
+_IRIAPI_GLOBUS_CLIENT_ID_ENV: str = "GLOBUS_CLIENT_ID"
+_IRIAPI_GLOBUS_CLIENT_SECRET_ENV: str = "GLOBUS_CLIENT_SECRET"  # set → confidential client
+_IRIAPI_TOKEN_FILE_ENV: str = "PATH_GLOBUS_TOKEN_FILE"
+_IRIAPI_GLOBUS_RESOURCE_SERVER: str = "auth.globus.org"
+_IRIAPI_GLOBUS_REQUIRED_SCOPES: frozenset[str] = frozenset({
+    "openid",
+    "profile",
+    "email",
+    "urn:globus:auth:scope:auth.globus.org:view_identities",
+})
+
+_API_BASE_URLS: dict[NERSCLoginMethod, str] = {
+    NERSCLoginMethod.SFAPI:  "https://api.nersc.gov/api/v1.2",
+    NERSCLoginMethod.IRIAPI: "https://api.iri.nersc.gov",
+}
 
 
 class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin):
@@ -80,7 +112,99 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
         self.client = client
 
     @staticmethod
-    def create_sfapi_client() -> Client:
+    def create_nersc_client(
+        login_method: NERSCLoginMethod = NERSCLoginMethod.SFAPI,
+    ) -> Client:
+        """Create and return a NERSC client for the requested login method.
+
+        Two fundamentally different auth strategies are supported:
+
+        - :attr:`NERSCLoginMethod.SFAPI`: uses an Iris-registered OAuth2
+          client ID + private key (NERSC OIDC flow). Set ``PATH_NERSC_CLIENT_ID``
+          and ``PATH_NERSC_PRI_KEY`` to the paths of those files.
+
+        - :attr:`NERSCLoginMethod.IRIAPI`: uses a Globus bearer token written
+          by ``globus_token.py``. Set ``PATH_GLOBUS_TOKEN_FILE`` to the token
+          file path, or rely on the default (``~/.globus/auth_tokens.json``).
+
+        Args:
+            login_method: Which NERSC API to authenticate against.
+                Defaults to :attr:`NERSCLoginMethod.SFAPI`.
+
+        Returns:
+            An authenticated :class:`sfapi_client.Client` instance.
+
+        Raises:
+            ValueError: If SFAPI credential environment variables are unset.
+            FileNotFoundError: If credential or token files are absent.
+            RuntimeError: If the Globus token is expired.
+            Exception: If the underlying client construction fails.
+        """
+        logger.info(f"Creating NERSC client using login method: {login_method.value}")
+        api_url = _API_BASE_URLS[login_method]
+        logger.info(f"Targeting API base URL: {api_url}")
+
+        if login_method is NERSCLoginMethod.SFAPI:
+            client = NERSCTomographyHPCController._create_sfapi_client()
+
+        elif login_method is NERSCLoginMethod.IRIAPI:
+            client = NERSCTomographyHPCController._create_iriapi_client()
+
+        else:
+            raise ValueError(f"Unhandled NERSCLoginMethod: {login_method}")
+
+        logger.info(
+            f"NERSC client created successfully "
+            f"(method={login_method.value}, api_url={api_url})."
+        )
+        return client
+
+    @staticmethod
+    def _create_iriapi_client() -> Client:
+        """Create a NERSC client for the IRI API using a Globus bearer token.
+
+        Requires ``GLOBUS_CLIENT_ID`` and ``GLOBUS_CLIENT_SECRET`` in the
+        environment. Reuses a cached token if valid; otherwise mints a new one
+        via the client credentials grant. No browser or user interaction.
+
+        Returns:
+            An authenticated :class:`sfapi_client.Client` targeting the IRI API.
+
+        Raises:
+            ValueError: If ``GLOBUS_CLIENT_ID`` or ``GLOBUS_CLIENT_SECRET`` are unset.
+            RuntimeError: If the acquired token is missing required scopes.
+        """
+        client_id = os.getenv(_IRIAPI_GLOBUS_CLIENT_ID_ENV)
+        client_secret = os.getenv(_IRIAPI_GLOBUS_CLIENT_SECRET_ENV)
+
+        if not client_id:
+            raise ValueError(
+                f"Globus client ID is unset. Set {_IRIAPI_GLOBUS_CLIENT_ID_ENV}."
+            )
+        if not client_secret:
+            raise ValueError(
+                f"Globus client secret is unset. Set {_IRIAPI_GLOBUS_CLIENT_SECRET_ENV}. "
+                "A Globus Confidential App client is required for automated IRI API auth."
+            )
+
+        token_file_env = os.getenv(_IRIAPI_TOKEN_FILE_ENV)
+        token_file = Path(token_file_env) if token_file_env else DEFAULT_TOKEN_FILE
+
+        access_token = get_access_token_confidential(
+            client_id=client_id,
+            client_secret=client_secret,
+            required_scopes=_IRIAPI_GLOBUS_REQUIRED_SCOPES,
+            resource_server=_IRIAPI_GLOBUS_RESOURCE_SERVER,
+            token_file=token_file,
+        )
+
+        return Client(
+            token=access_token,
+            api_url=_API_BASE_URLS[NERSCLoginMethod.IRIAPI],
+        )
+
+    @staticmethod
+    def _create_sfapi_client() -> Client:
         """Create and return an NERSC client instance"""
 
         # When generating the SFAPI Key in Iris, make sure to select "asldev" as the user!
