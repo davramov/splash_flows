@@ -188,10 +188,12 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
     def __init__(
         self,
         client: Client,
-        config: Config832
+        config: Config832,
+        login_method: NERSCLoginMethod = NERSCLoginMethod.SFAPI,
     ) -> None:
         TomographyHPCController.__init__(self, config)
         self.client = client
+        self.login_method = login_method
 
     @staticmethod
     def create_nersc_client(
@@ -354,6 +356,70 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
                 f"Registered combinations: {list(registry)}"
             )
         return registry[key]
+
+    def _submit_job(self, job_script: str) -> str:
+        """Submit a Slurm job script and return the job ID.
+
+        Dispatches to the appropriate submission mechanism based on
+        ``self.login_method``.
+
+        Args:
+            job_script: The full Slurm batch script to submit.
+
+        Returns:
+            The submitted job ID as a string.
+
+        Raises:
+            RuntimeError: If job submission fails.
+        """
+        if self.login_method is NERSCLoginMethod.SFAPI:
+            perlmutter = self.client.compute(Machine.perlmutter)
+            job = perlmutter.submit_job(job_script)
+            return str(job.jobid)
+
+        elif self.login_method is NERSCLoginMethod.IRIAPI:
+            response = self.client.post(
+                "/api/v1/compute/job/perlmutter",
+                json={"script": job_script},
+            )
+            response.raise_for_status()
+            return str(response.json()["job_id"])
+
+        else:
+            raise ValueError(f"Unhandled NERSCLoginMethod: {self.login_method}")
+
+    def _wait_for_job(self, job_id: str) -> bool:
+        """Block until a submitted job completes.
+
+        Dispatches to the appropriate polling mechanism based on
+        ``self.login_method``.
+
+        Args:
+            job_id: The job ID returned by :meth:`_submit_job`.
+
+        Returns:
+            True if the job completed successfully, False otherwise.
+        """
+        if self.login_method is NERSCLoginMethod.SFAPI:
+            perlmutter = self.client.compute(Machine.perlmutter)
+            job = perlmutter.job(jobid=job_id)
+            job.complete()
+            return True
+
+        elif self.login_method is NERSCLoginMethod.IRIAPI:
+            while True:
+                response = self.client.get(
+                    f"/api/v1/compute/status/perlmutter/{job_id}"
+                )
+                response.raise_for_status()
+                state = response.json().get("state")
+                logger.info(f"Job {job_id} state: {state}")
+                if state in ("COMPLETED", "FAILED", "CANCELLED", "TIMEOUT"):
+                    return state == "COMPLETED"
+                time.sleep(60)
+
+        else:
+            raise ValueError(f"Unhandled NERSCLoginMethod: {self.login_method}")
 
     def reconstruct(
         self,
