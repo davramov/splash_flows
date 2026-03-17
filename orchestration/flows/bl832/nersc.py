@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 import datetime
 from dotenv import load_dotenv
 import enum
+import httpx
 import json
 import logging
 import os
@@ -18,12 +19,12 @@ from typing import Any, Optional
 
 from orchestration.flows.bl832.config import Config832
 
-from orchestration.flows.bl832.job_controller import get_controller, HPC, TomographyHPCController
-from orchestration.mlflow import get_checkpoint_info
+from orchestration.flows.bl832.job_controller import get_controller, HPC, NERSCLoginMethod, TomographyHPCController
 from orchestration.flows.bl832.streaming_mixin import (
     NerscStreamingMixin, SlurmJobBlock, cancellation_hook, monitor_streaming_job, save_block
 )
 from orchestration.globus.token import get_access_token_confidential, DEFAULT_TOKEN_FILE
+from orchestration.mlflow import get_checkpoint_info
 from orchestration.prefect import schedule_prefect_flow
 from orchestration.prune_controller import get_prune_controller, PruneMethod
 from orchestration.tiled import register_file_to_tiled
@@ -33,6 +34,23 @@ from orchestration.transfer_controller import globus_transfer_task
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 load_dotenv()
+
+# Applies only to NERSCLoginMethod.IRIAPI
+_IRIAPI_GLOBUS_CLIENT_ID_ENV: str = "GLOBUS_CLIENT_ID"
+_IRIAPI_GLOBUS_CLIENT_SECRET_ENV: str = "GLOBUS_CLIENT_SECRET"  # set → confidential client
+_IRIAPI_TOKEN_FILE_ENV: str = "PATH_GLOBUS_TOKEN_FILE"
+_IRIAPI_GLOBUS_RESOURCE_SERVER: str = "auth.globus.org"
+_IRIAPI_GLOBUS_REQUIRED_SCOPES: frozenset[str] = frozenset({
+    "openid",
+    "profile",
+    "email",
+    "urn:globus:auth:scope:auth.globus.org:view_identities",
+})
+
+_API_BASE_URLS: dict[NERSCLoginMethod, str] = {
+    NERSCLoginMethod.SFAPI:  "https://api.nersc.gov/api/v1.2",
+    NERSCLoginMethod.IRIAPI: "https://api.iri.nersc.gov",
+}
 
 
 @dataclass
@@ -160,24 +178,6 @@ class NERSCLoginMethod(enum.Enum):
     """Integrated Research Infrastructure API via IRI-registered OAuth2 credentials."""
 
 
-# Applies only to NERSCLoginMethod.IRIAPI
-_IRIAPI_GLOBUS_CLIENT_ID_ENV: str = "GLOBUS_CLIENT_ID"
-_IRIAPI_GLOBUS_CLIENT_SECRET_ENV: str = "GLOBUS_CLIENT_SECRET"  # set → confidential client
-_IRIAPI_TOKEN_FILE_ENV: str = "PATH_GLOBUS_TOKEN_FILE"
-_IRIAPI_GLOBUS_RESOURCE_SERVER: str = "auth.globus.org"
-_IRIAPI_GLOBUS_REQUIRED_SCOPES: frozenset[str] = frozenset({
-    "openid",
-    "profile",
-    "email",
-    "urn:globus:auth:scope:auth.globus.org:view_identities",
-})
-
-_API_BASE_URLS: dict[NERSCLoginMethod, str] = {
-    NERSCLoginMethod.SFAPI:  "https://api.nersc.gov/api/v1.2",
-    NERSCLoginMethod.IRIAPI: "https://api.iri.nersc.gov",
-}
-
-
 class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin):
     """
     Implementation for a NERSC-based tomography HPC controller.
@@ -187,8 +187,8 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
 
     def __init__(
         self,
-        client: Client,
         config: Config832,
+        client: Client | httpx.Client | None = None,
         login_method: NERSCLoginMethod = NERSCLoginMethod.SFAPI,
     ) -> None:
         TomographyHPCController.__init__(self, config)
@@ -282,9 +282,9 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
             token_file=token_file,
         )
 
-        return Client(
-            token=access_token,
-            api_url=_API_BASE_URLS[NERSCLoginMethod.IRIAPI],
+        return httpx.Client(
+            base_url=_API_BASE_URLS[NERSCLoginMethod.IRIAPI],
+            headers={"Authorization": f"Bearer {access_token}"},
         )
 
     @staticmethod
@@ -357,6 +357,28 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
             )
         return registry[key]
 
+    def _get_nersc_username(self) -> str:
+        """Get the NERSC username for constructing pscratch paths.
+
+        Uses the sfapi_client user endpoint for SFAPI, or reads
+        ``NERSC_USERNAME`` from the environment for IRIAPI.
+
+        Returns:
+            NERSC username string.
+
+        Raises:
+            ValueError: If IRIAPI is selected and NERSC_USERNAME is unset.
+        """
+        if self.login_method is NERSCLoginMethod.SFAPI:
+            return self.client.user().name
+        else:
+            username = os.getenv("NERSC_USERNAME")
+            if not username:
+                raise ValueError(
+                    "NERSC_USERNAME must be set in the environment when using IRIAPI."
+                )
+            return username
+
     def _submit_job(self, job_script: str) -> str:
         """Submit a Slurm job script and return the job ID.
 
@@ -395,7 +417,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
         ``self.login_method``.
 
         Args:
-            job_id: The job ID returned by :meth:`_submit_job`.
+            job_id: The job ID returned by `_submit_job`.
 
         Returns:
             True if the job completed successfully, False otherwise.
@@ -435,7 +457,8 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
         """
         logger.info("Starting NERSC reconstruction process.")
 
-        user = self.client.user()
+        # user = self.client.user()
+        username = self._get_nersc_username()
 
         raw_path = self.config.nersc832_alsdev_raw.root_path
         logger.info(f"{raw_path=}")
@@ -449,7 +472,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
         scratch_path = self.config.nersc832_alsdev_scratch.root_path
         logger.info(f"{scratch_path=}")
 
-        pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
+        pscratch_path = f"/pscratch/sd/{username[0]}/{username}"
         logger.info(f"{pscratch_path=}")
 
         path = Path(file_path)
@@ -598,55 +621,23 @@ fi
 echo "JOB_STATUS=SUCCESS" >> $TIMING_FILE
 echo "JOB_END=$(date +%s)" >> $TIMING_FILE
 """
+        job_id = None
         try:
-            logger.info("Submitting reconstruction job script to Perlmutter.")
-            perlmutter = self.client.compute(Machine.perlmutter)
-            job = perlmutter.submit_job(job_script)
-            logger.info(f"Submitted job ID: {job.jobid}")
-
-            try:
-                job.update()
-            except Exception as update_err:
-                logger.warning(f"Initial job update failed, continuing: {update_err}")
-
+            logger.info("Submitting reconstruction job to Perlmutter.")
+            job_id = self._submit_job(job_script)
+            logger.info(f"Submitted job ID: {job_id}")
             time.sleep(60)
-            logger.info(f"Job {job.jobid} current state: {job.state}")
-
-            job.complete()  # Wait until the job completes
-            logger.info("Reconstruction job completed successfully.")
-            # Fetch timing data
-            timing = self._fetch_timing_data(perlmutter, pscratch_path, job.jobid)
-
-            return {
-                "success": True,
-                "job_id": job.jobid,
-                "timing": timing
-            }
-
+            success = self._wait_for_job(job_id)
+            timing = self._fetch_timing_data(pscratch_path, job_id) if success else None
+            return {"success": success, "job_id": job_id, "timing": timing}
         except Exception as e:
-            logger.info(f"Error during job submission or completion: {e}")
-            match = re.search(r"Job not found:\s*(\d+)", str(e))
+            logger.error(f"Error during reconstruction job submission or completion: {e}")
+            return {"success": False, "job_id": job_id, "timing": None}
 
-            if match:
-                jobid = match.group(1)
-                logger.info(f"Attempting to recover job {jobid}.")
-                try:
-                    job = self.client.perlmutter.job(jobid=jobid)
-                    time.sleep(30)
-                    job.complete()
-                    logger.info("Reconstruction job completed successfully after recovery.")
-                    return True
-                except Exception as recovery_err:
-                    logger.error(f"Failed to recover job {jobid}: {recovery_err}")
-                    return False
-            else:
-                return False
-
-    def _fetch_timing_data(self, perlmutter, pscratch_path: str, job_id: str) -> dict:
+    def _fetch_timing_data(self, pscratch_path: str, job_id: str) -> dict:
         """
         Fetch and parse timing data from the SLURM job.
 
-        :param perlmutter: SFAPI compute object for Perlmutter
         :param pscratch_path: Path to the user's pscratch directory
         :param job_id: SLURM job ID
         :return: Dictionary with timing breakdown
@@ -655,17 +646,26 @@ echo "JOB_END=$(date +%s)" >> $TIMING_FILE
 
         try:
             # Use SFAPI to read the timing file
-            result = perlmutter.run(f"cat {timing_file}")
+            if self.login_method is NERSCLoginMethod.SFAPI:
+                perlmutter = self.client.compute(Machine.perlmutter)
+                result = perlmutter.run(f"cat {timing_file}")
 
-            # result might be a string directly, or an object with .output
-            if isinstance(result, str):
-                output = result
-            elif hasattr(result, 'output'):
-                output = result.output
-            elif hasattr(result, 'stdout'):
-                output = result.stdout
-            else:
-                output = str(result)
+                # result might be a string directly, or an object with .output
+                if isinstance(result, str):
+                    output = result
+                elif hasattr(result, 'output'):
+                    output = result.output
+                elif hasattr(result, 'stdout'):
+                    output = result.stdout
+                else:
+                    output = str(result)
+            elif self.login_method is NERSCLoginMethod.IRIAPI:
+                response = self.client.get(
+                    "/api/v1/filesystem/file/perlmutter",
+                    params={"path": timing_file},
+                )
+                response.raise_for_status()
+                output = response.text
 
             logger.info(f"Timing file contents:\n{output}")
 
