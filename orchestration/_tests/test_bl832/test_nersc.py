@@ -1,5 +1,4 @@
-# orchestration/_tests/bl832/test_nersc.py
-
+# orchestration/_tests/test_bl832/test_nersc.py
 import pytest
 from uuid import uuid4
 
@@ -20,18 +19,28 @@ def prefect_test_fixture():
         yield
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
 # Shared fixtures
-# ──────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def mock_config(mocker):
+    config = mocker.MagicMock()
+    config.ghcr_images832 = {
+        "recon_image": "mock_recon_image",
+        "multires_image": "mock_multires_image",
+    }
+    return config
+
 
 @pytest.fixture
 def mock_sfapi_client(mocker):
-    """Mock sfapi_client.Client with a completed job on Perlmutter."""
-    mock_client = mocker.MagicMock()
+    """sfapi_client.Client mock with user, compute, submit_job, and job chained."""
+    client = mocker.MagicMock()
 
     mock_user = mocker.MagicMock()
     mock_user.name = "testuser"
-    mock_client.user.return_value = mock_user
+    client.user.return_value = mock_user
 
     mock_job = mocker.MagicMock()
     mock_job.jobid = "12345"
@@ -39,10 +48,9 @@ def mock_sfapi_client(mocker):
 
     mock_compute = mocker.MagicMock()
     mock_compute.submit_job.return_value = mock_job
-    mock_client.compute.return_value = mock_compute
-
-    mocker.patch("orchestration.flows.bl832.nersc.Client", return_value=mock_client)
-    return mock_client
+    client.compute.return_value = mock_compute
+    mocker.patch("orchestration.flows.bl832.nersc.Client", return_value=client)
+    return client
 
 
 @pytest.fixture
@@ -167,11 +175,28 @@ def _make_future(mocker, value):
     return f
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# create_sfapi_client
-# ──────────────────────────────────────────────────────────────────────────────
+@pytest.fixture
+def mock_iriapi_client(mocker):
+    """httpx.Client mock for IRI API responses."""
+    client = mocker.MagicMock()
+
+    submit_response = mocker.MagicMock()
+    submit_response.json.return_value = {"job_id": "99999"}
+    client.post.return_value = submit_response
+
+    status_response = mocker.MagicMock()
+    status_response.json.return_value = {"state": "COMPLETED"}
+    client.get.return_value = status_response
+
+    return client
+
+
+# ---------------------------------------------------------------------------
+# _create_sfapi_client
+# ---------------------------------------------------------------------------
 
 def test_create_sfapi_client_success(mocker):
+    """Valid credentials produce a Client instance."""
     from orchestration.flows.bl832.nersc import NERSCTomographyHPCController
 
     mocker.patch("orchestration.flows.bl832.nersc.os.getenv", side_effect=lambda x: {
@@ -179,29 +204,34 @@ def test_create_sfapi_client_success(mocker):
         "PATH_NERSC_PRI_KEY": "/path/to/client_secret",
     }.get(x))
     mocker.patch("orchestration.flows.bl832.nersc.os.path.isfile", return_value=True)
-    mocker.patch("builtins.open", side_effect=[
-        mocker.mock_open(read_data="client_id_value")(),
-        mocker.mock_open(read_data='{"key": "value"}')(),
-    ])
+    mocker.patch(
+        "builtins.open",
+        side_effect=[
+            mocker.mock_open(read_data="my-client-id")(),
+            mocker.mock_open(read_data='{"kty": "RSA", "n": "x", "e": "y"}')(),
+        ]
+    )
     mocker.patch("orchestration.flows.bl832.nersc.JsonWebKey.import_key", return_value="mock_secret")
     mock_client_cls = mocker.patch("orchestration.flows.bl832.nersc.Client")
 
-    client = NERSCTomographyHPCController.create_sfapi_client()
+    client = NERSCTomographyHPCController._create_sfapi_client()
 
-    mock_client_cls.assert_called_once_with("client_id_value", "mock_secret")
-    assert client == mock_client_cls.return_value
+    mock_client_cls.assert_called_once_with("my-client-id", "mock_secret")
+    assert client is mock_client_cls.return_value
 
 
 def test_create_sfapi_client_missing_paths(mocker):
+    """Unset env vars raise ValueError."""
     from orchestration.flows.bl832.nersc import NERSCTomographyHPCController
 
     mocker.patch("orchestration.flows.bl832.nersc.os.getenv", return_value=None)
 
     with pytest.raises(ValueError, match="Missing NERSC credentials paths."):
-        NERSCTomographyHPCController.create_sfapi_client()
+        NERSCTomographyHPCController._create_sfapi_client()
 
 
 def test_create_sfapi_client_missing_files(mocker):
+    """Env vars set but files absent raise FileNotFoundError."""
     from orchestration.flows.bl832.nersc import NERSCTomographyHPCController
 
     mocker.patch("orchestration.flows.bl832.nersc.os.getenv", side_effect=lambda x: {
@@ -211,40 +241,7 @@ def test_create_sfapi_client_missing_files(mocker):
     mocker.patch("orchestration.flows.bl832.nersc.os.path.isfile", return_value=False)
 
     with pytest.raises(FileNotFoundError, match="NERSC credential files are missing."):
-        NERSCTomographyHPCController.create_sfapi_client()
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# reconstruct
-# ──────────────────────────────────────────────────────────────────────────────
-
-def test_reconstruct_success(mocker, mock_sfapi_client, mock_config832):
-    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController
-    from sfapi_client.compute import Machine
-
-    mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
-    controller = NERSCTomographyHPCController(client=mock_sfapi_client, config=mock_config832)
-
-    result = controller.reconstruct(file_path="folder/file.h5")
-
-    mock_sfapi_client.compute.assert_called_once_with(Machine.perlmutter)
-    mock_sfapi_client.compute.return_value.submit_job.assert_called_once()
-    mock_sfapi_client.compute.return_value.submit_job.return_value.complete.assert_called_once()
-    assert isinstance(result, dict)
-    assert result["success"] is True
-    assert result["job_id"] == "12345"
-
-
-def test_reconstruct_submission_failure(mocker, mock_sfapi_client, mock_config832):
-    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController
-
-    mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
-    mock_sfapi_client.compute.return_value.submit_job.side_effect = Exception("Submission failed")
-    controller = NERSCTomographyHPCController(client=mock_sfapi_client, config=mock_config832)
-
-    result = controller.reconstruct(file_path="folder/file.h5")
-
-    assert result is False
+        NERSCTomographyHPCController._create_sfapi_client()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -386,6 +383,162 @@ def test_segmentation_dinov3_submission_failure(mocker, mock_sfapi_client, mock_
     controller = NERSCTomographyHPCController(client=mock_sfapi_client, config=mock_config832)
 
     result = controller.segmentation_dinov3(recon_folder_path="folder/recfile")
+    assert result is False
+
+# ---------------------------------------------------------------------------
+# reconstruct — SFAPI
+# ---------------------------------------------------------------------------
+
+
+def test_reconstruct_sfapi_success(mocker, mock_sfapi_client, mock_config832):
+    """SFAPI reconstruct submits a job and waits for completion."""
+    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
+    from sfapi_client.compute import Machine
+
+    mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
+
+    controller = NERSCTomographyHPCController(
+        client=mock_sfapi_client,
+        config=mock_config832,
+        login_method=NERSCLoginMethod.SFAPI,
+    )
+
+    result = controller.reconstruct(file_path="folder/scan.h5")
+
+    assert result["success"] is True
+    assert result["job_id"] == "12345"
+    assert mock_sfapi_client.compute.call_count == 3  # 1 _submit_job() + 1 _wait_for_job() + 1 _fetch_timing_data()
+    mock_sfapi_client.compute.assert_called_with(Machine.perlmutter)
+    mock_sfapi_client.compute.return_value.submit_job.assert_called_once()
+    mock_sfapi_client.compute.return_value.job.assert_called_once_with(jobid="12345")
+    mock_sfapi_client.compute.return_value.job.return_value.complete.assert_called_once()
+
+
+def test_reconstruct_sfapi_submission_failure(mocker, mock_sfapi_client, mock_config832):
+    """SFAPI reconstruct returns False when submission raises."""
+    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
+
+    mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
+    mock_sfapi_client.compute.return_value.submit_job.side_effect = Exception("SFAPI error")
+
+    controller = NERSCTomographyHPCController(
+        client=mock_sfapi_client,
+        config=mock_config832,
+        login_method=NERSCLoginMethod.SFAPI,
+    )
+
+    result = controller.reconstruct(file_path="folder/scan.h5")
+
+    assert result["success"] is False
+
+
+# ---------------------------------------------------------------------------
+# reconstruct — IRIAPI
+# ---------------------------------------------------------------------------
+
+def test_reconstruct_iriapi_success(mocker, mock_iriapi_client, mock_config832, monkeypatch):
+    """IRIAPI reconstruct POSTs a job and polls for COMPLETED state."""
+    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
+
+    monkeypatch.setenv("NERSC_USERNAME", "alsdev")
+    mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
+
+    controller = NERSCTomographyHPCController(
+        client=mock_iriapi_client,
+        config=mock_config832,
+        login_method=NERSCLoginMethod.IRIAPI,
+    )
+
+    result = controller.reconstruct(file_path="folder/scan.h5")
+
+    assert result["success"] is True
+    assert result["job_id"] == "99999"
+    mock_iriapi_client.post.assert_called_once()
+    assert mock_iriapi_client.post.call_args.args[0] == "/api/v1/compute/job/perlmutter"
+    assert "script" in mock_iriapi_client.post.call_args.kwargs["json"]
+    assert mock_iriapi_client.get.call_count == 2
+    mock_iriapi_client.get.assert_any_call(
+        "/api/v1/compute/status/perlmutter/99999"
+    )
+    mock_iriapi_client.get.assert_any_call(
+        "/api/v1/filesystem/file/perlmutter",
+        params={"path": mocker.ANY},
+    )
+
+
+def test_reconstruct_iriapi_job_failed(mocker, mock_iriapi_client, mock_config832, monkeypatch):
+    """IRIAPI reconstruct returns False when job state is FAILED."""
+    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
+
+    monkeypatch.setenv("NERSC_USERNAME", "alsdev")
+    mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
+    mock_iriapi_client.get.return_value.json.return_value = {"state": "FAILED"}
+
+    controller = NERSCTomographyHPCController(
+        client=mock_iriapi_client,
+        config=mock_config832,
+        login_method=NERSCLoginMethod.IRIAPI,
+    )
+
+    result = controller.reconstruct(file_path="folder/scan.h5")
+
+    assert result["success"] is False
+
+
+def test_reconstruct_iriapi_missing_username(mocker, mock_iriapi_client, mock_config832, monkeypatch):
+    """IRIAPI reconstruct raises ValueError when NERSC_USERNAME is unset."""
+    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
+
+    monkeypatch.delenv("NERSC_USERNAME", raising=False)
+
+    controller = NERSCTomographyHPCController(
+        client=mock_iriapi_client,
+        config=mock_config832,
+        login_method=NERSCLoginMethod.IRIAPI,
+    )
+
+    with pytest.raises(ValueError, match="NERSC_USERNAME"):
+        controller.reconstruct(file_path="folder/scan.h5")
+
+
+# ---------------------------------------------------------------------------
+# build_multi_resolution — SFAPI
+# ---------------------------------------------------------------------------
+
+def test_build_multi_resolution_sfapi_success(mocker, mock_sfapi_client, mock_config832):
+    """SFAPI build_multi_resolution submits and waits successfully."""
+    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
+    from sfapi_client.compute import Machine
+
+    mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
+
+    controller = NERSCTomographyHPCController(
+        client=mock_sfapi_client,
+        config=mock_config832,
+        login_method=NERSCLoginMethod.SFAPI,
+    )
+
+    result = controller.build_multi_resolution(file_path="folder/scan.h5")
+
+    assert result is True
+    assert mock_sfapi_client.compute.call_count == 2
+    mock_sfapi_client.compute.assert_called_with(Machine.perlmutter)
+
+
+def test_build_multi_resolution_sfapi_failure(mocker, mock_sfapi_client, mock_config832):
+    """SFAPI build_multi_resolution returns False when submission raises."""
+    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
+
+    mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
+    mock_sfapi_client.compute.return_value.submit_job.side_effect = Exception("error")
+
+    controller = NERSCTomographyHPCController(
+        client=mock_sfapi_client,
+        config=mock_config832,
+        login_method=NERSCLoginMethod.SFAPI,
+    )
+
+    result = controller.build_multi_resolution(file_path="folder/scan.h5")
 
     assert result is False
 
@@ -706,3 +859,48 @@ def test_petiole_segment_flow_recon_failure(mocker, mock_config832):
 
     with pytest.raises(ValueError, match="Reconstruction at NERSC Failed"):
         nersc_petiole_segment_flow(file_path="folder/file.h5", num_nodes=4, config=None)
+
+# ---------------------------------------------------------------------------
+# build_multi_resolution — IRIAPI
+# ---------------------------------------------------------------------------
+
+
+def test_build_multi_resolution_iriapi_success(mocker, mock_iriapi_client, mock_config, monkeypatch):
+    """IRIAPI build_multi_resolution POSTs and polls successfully."""
+    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
+
+    monkeypatch.setenv("NERSC_USERNAME", "alsdev")
+    mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
+
+    controller = NERSCTomographyHPCController(
+        client=mock_iriapi_client,
+        config=mock_config,
+        login_method=NERSCLoginMethod.IRIAPI,
+    )
+
+    result = controller.build_multi_resolution(file_path="folder/scan.h5")
+
+    assert result is True
+    mock_iriapi_client.post.assert_called_once()
+    mock_iriapi_client.get.assert_called_once_with(
+        "/api/v1/compute/status/perlmutter/99999"
+    )
+
+
+def test_build_multi_resolution_iriapi_failure(mocker, mock_iriapi_client, mock_config, monkeypatch):
+    """IRIAPI build_multi_resolution returns False when job state is FAILED."""
+    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
+
+    monkeypatch.setenv("NERSC_USERNAME", "alsdev")
+    mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
+    mock_iriapi_client.get.return_value.json.return_value = {"state": "FAILED"}
+
+    controller = NERSCTomographyHPCController(
+        client=mock_iriapi_client,
+        config=mock_config,
+        login_method=NERSCLoginMethod.IRIAPI,
+    )
+
+    result = controller.build_multi_resolution(file_path="folder/scan.h5")
+
+    assert result is False
