@@ -10,6 +10,19 @@ logger.setLevel(logging.INFO)
 load_dotenv()
 
 
+class NERSCLoginMethod(Enum):
+    """Selects which NERSC API login method to use when creating a NERSC client.
+
+    Each method corresponds to a different set of credentials and API base URL.
+    """
+
+    SFAPI = "sfapi"
+    """Standard Superfacility API via Iris-registered OAuth2 credentials."""
+
+    IRIAPI = "iriapi"
+    """Integrated Research Infrastructure API via IRI-registered OAuth2 credentials."""
+
+
 class TomographyHPCController(ABC):
     """
     Abstract class for tomography HPC controllers.
@@ -65,7 +78,8 @@ class HPC(Enum):
 
 def get_controller(
     hpc_type: HPC,
-    config: Config832
+    config: Config832,
+    login_method: "NERSCLoginMethod | None" = None,
 ) -> TomographyHPCController:
     """
     Factory function that returns an HPC controller instance for the given HPC environment.
@@ -86,10 +100,14 @@ def get_controller(
             config=config
         )
     elif hpc_type == HPC.NERSC:
-        from orchestration.flows.bl832.nersc import NERSCTomographyHPCController
+        from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
+        resolved_login_method = login_method if isinstance(login_method, NERSCLoginMethod) else NERSCLoginMethod.SFAPI
         return NERSCTomographyHPCController(
-            client=NERSCTomographyHPCController.create_sfapi_client(),
-            config=config
+            client=NERSCTomographyHPCController.create_nersc_client(
+                login_method=resolved_login_method
+            ),
+            config=config,
+            login_method=resolved_login_method,
         )
     elif hpc_type == HPC.OLCF:
         # TODO: Implement OLCF controller
