@@ -24,6 +24,16 @@ def prefect_test_fixture():
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
+def mock_config(mocker):
+    config = mocker.MagicMock()
+    config.ghcr_images832 = {
+        "recon_image": "mock_recon_image",
+        "multires_image": "mock_multires_image",
+    }
+    return config
+
+
+@pytest.fixture
 def mock_sfapi_client(mocker):
     """sfapi_client.Client mock with user, compute, submit_job, and job chained."""
     client = mocker.MagicMock()
@@ -201,10 +211,10 @@ def mock_iriapi_client(mocker):
 
     return client
 
+
 # ---------------------------------------------------------------------------
 # _create_sfapi_client
 # ---------------------------------------------------------------------------
-
 
 def test_create_sfapi_client_success(mocker):
     """Valid credentials produce a Client instance."""
@@ -522,7 +532,7 @@ def test_reconstruct_iriapi_job_failed(mocker, mock_iriapi_client, mock_config83
 
     monkeypatch.setenv("NERSC_USERNAME", "alsdev")
     mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
-    mock_iriapi_client.get.return_value.json.return_value = {"status": {"state": "failed"}}  # was {"state": "FAILED"}
+    mock_iriapi_client.get.return_value.json.return_value = {"status": {"state": "failed"}}
 
     controller = NERSCTomographyHPCController(
         client=mock_iriapi_client,
