@@ -7,7 +7,6 @@ import json
 import logging
 import os
 from pathlib import Path
-import re
 import time
 
 from authlib.jose import JsonWebKey
@@ -721,7 +720,8 @@ echo "JOB_END=$(date +%s)" >> $TIMING_FILE
 
         logger.info("Starting NERSC multiresolution process.")
 
-        user = self.client.user()
+        # user = self.client.user()
+        username = self._get_nersc_username()
 
         multires_image = self.config.ghcr_images832["multires_image"]
         logger.info(f"{multires_image=}")
@@ -732,7 +732,7 @@ echo "JOB_END=$(date +%s)" >> $TIMING_FILE
         scratch_path = self.config.nersc832_alsdev_scratch.root_path
         logger.info(f"{scratch_path=}")
 
-        pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
+        pscratch_path = f"/pscratch/sd/{username[0]}/{username}"
         logger.info(f"{pscratch_path=}")
 
         path = Path(file_path)
@@ -787,42 +787,53 @@ bash -c "python tiff_to_zarr.py {recon_path} --raw_file {raw_path}"
 date
 """
         try:
-            logger.info("Submitting Tiff to Zarr job script to Perlmutter.")
-            perlmutter = self.client.compute(Machine.perlmutter)
-            job = perlmutter.submit_job(job_script)
-            logger.info(f"Submitted job ID: {job.jobid}")
-
-            try:
-                job.update()
-            except Exception as update_err:
-                logger.warning(f"Initial job update failed, continuing: {update_err}")
-
+            logger.info("Submitting Tiff to Zarr job to Perlmutter.")
+            job_id = self._submit_job(job_script)
+            logger.info(f"Submitted job ID: {job_id}")
             time.sleep(60)
-            logger.info(f"Job {job.jobid} current state: {job.state}")
-
-            job.complete()  # Wait until the job completes
-            logger.info("Reconstruction job completed successfully.")
-
-            return True
-
+            success = self._wait_for_job(job_id)
+            logger.info(f"Multiresolution job {'completed' if success else 'failed'}.")
+            return success
         except Exception as e:
-            logger.warning(f"Error during job submission or completion: {e}")
-            match = re.search(r"Job not found:\s*(\d+)", str(e))
+            logger.error(f"Error during multiresolution job submission or completion: {e}")
+            return False
+        # try:
+        #     logger.info("Submitting Tiff to Zarr job script to Perlmutter.")
+        #     perlmutter = self.client.compute(Machine.perlmutter)
+        #     job = perlmutter.submit_job(job_script)
+        #     logger.info(f"Submitted job ID: {job.jobid}")
 
-            if match:
-                jobid = match.group(1)
-                logger.info(f"Attempting to recover job {jobid}.")
-                try:
-                    job = self.client.perlmutter.job(jobid=jobid)
-                    time.sleep(30)
-                    job.complete()
-                    logger.info("Reconstruction job completed successfully after recovery.")
-                    return True
-                except Exception as recovery_err:
-                    logger.error(f"Failed to recover job {jobid}: {recovery_err}")
-                    return False
-            else:
-                return False
+        #     try:
+        #         job.update()
+        #     except Exception as update_err:
+        #         logger.warning(f"Initial job update failed, continuing: {update_err}")
+
+        #     time.sleep(60)
+        #     logger.info(f"Job {job.jobid} current state: {job.state}")
+
+        #     job.complete()  # Wait until the job completes
+        #     logger.info("Reconstruction job completed successfully.")
+
+        #     return True
+
+        # except Exception as e:
+        #     logger.warning(f"Error during job submission or completion: {e}")
+        #     match = re.search(r"Job not found:\s*(\d+)", str(e))
+
+        #     if match:
+        #         jobid = match.group(1)
+        #         logger.info(f"Attempting to recover job {jobid}.")
+        #         try:
+        #             job = self.client.perlmutter.job(jobid=jobid)
+        #             time.sleep(30)
+        #             job.complete()
+        #             logger.info("Reconstruction job completed successfully after recovery.")
+        #             return True
+        #         except Exception as recovery_err:
+        #             logger.error(f"Failed to recover job {jobid}: {recovery_err}")
+        #             return False
+        #     else:
+        #         return False
 
     def segmentation_sam3(
         self,
