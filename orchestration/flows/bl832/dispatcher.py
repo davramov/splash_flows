@@ -27,7 +27,7 @@ class FlowParameterMapper:
             "file_path",
             "num_nodes",
             "config"],
-        "nersc_forge_recon_multisegment_flow/nersc_forge_recon_multisegment_flow": [
+        "nersc_petiole_segment_flow/nersc_petiole_segment_flow": [
             "file_path",
             "num_nodes",
             "config"]
@@ -64,7 +64,7 @@ class DecisionFlowInputModel(BaseModel):
 def setup_decision_settings(
     alcf_recon: bool,
     nersc_recon: bool,
-    nersc_recon_multinode: bool,
+    nersc_petiole_segment: bool,
     new_file_832: bool
 ) -> dict:
     """
@@ -72,7 +72,7 @@ def setup_decision_settings(
 
     :param alcf_recon: Boolean indicating whether to run the ALCF reconstruction flow.
     :param nersc_recon: Boolean indicating whether to run the NERSC reconstruction flow.
-    :param nersc_recon_multinode: Boolean indicating whether to run the NERSC multinode reconstruction flow.
+    :param nersc_petiole_segment: Boolean indicating whether to run the NERSC petiole segmentation flow.
     :param new_file_832: Boolean indicating whether to move files to NERSC.
     :return: A dictionary containing the settings for each flow.
     """
@@ -80,13 +80,13 @@ def setup_decision_settings(
     try:
         logger.info(f"Setting up decision settings: alcf_recon={alcf_recon}, "
                     f"nersc_recon={nersc_recon}, "
-                    f"nersc_recon_multinode={nersc_recon_multinode}, "
+                    f"nersc_petiole_segment={nersc_petiole_segment}, "
                     f"new_file_832={new_file_832}")
         # Define which flows to run based on the input settings
         settings = {
             "alcf_recon_flow/alcf_recon_flow": alcf_recon,
             "nersc_recon_flow/nersc_recon_flow": nersc_recon,
-            "nersc_recon_multinode_flow/nersc_recon_multinode_flow": nersc_recon_multinode,
+            "nersc_petiole_segment_flow/nersc_petiole_segment_flow": nersc_petiole_segment,
             "new_832_file_flow/new_file_832": new_file_832
         }
         # Save the settings in a JSON block for later retrieval by other flows
@@ -164,10 +164,13 @@ async def dispatcher(
         nersc_params = FlowParameterMapper.get_flow_parameters("nersc_recon_flow/nersc_recon_flow", available_params)
         tasks.append(run_recon_flow_async("nersc_recon_flow/nersc_recon_flow", nersc_params))
 
-    if decision_settings.get("nersc_recon_multinode_flow/nersc_recon_multinode_flow"):
-        nersc_multinode_params = FlowParameterMapper.get_flow_parameters(
-            "nersc_recon_multinode_flow/nersc_recon_multinode_flow", available_params)
-        tasks.append(run_recon_flow_async("nersc_recon_multinode_flow/nersc_recon_multinode_flow", nersc_multinode_params))
+    if decision_settings.get("nersc_petiole_segment_flow/nersc_petiole_segment_flow"):
+        nersc_petiole_segment_params = FlowParameterMapper.get_flow_parameters(
+            "nersc_petiole_segment_flow/nersc_petiole_segment_flow", available_params
+        )
+        tasks.append(
+            run_recon_flow_async("nersc_petiole_segment_flow/nersc_petiole_segment_flow", nersc_petiole_segment_params)
+        )
 
     # Run ALCF and NERSC flows in parallel, if any
     if tasks:
