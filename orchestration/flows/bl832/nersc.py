@@ -465,7 +465,7 @@ date
     def segmentation_sam3(
         self,
         recon_folder_path: str = "",
-        num_nodes: int = 42,
+        num_nodes: int = 4,
     ) -> dict:
         """
         Run SAM3 segmentation at NERSC Perlmutter (v6 with overlap + max confidence stitching).
@@ -484,6 +484,11 @@ date
         original_checkpoint = sam3_settings["original_checkpoint_path"]
         finetuned_checkpoint = sam3_settings["finetuned_checkpoint_path"]
 
+        prompts = sam3_settings["prompts"]
+        if not isinstance(prompts, list) or not prompts:
+            raise ValueError("nersc_segmentation_sam3.prompts must be a non-empty list")
+        prompts_str = " ".join(f"'{p}'" for p in prompts)\
+
         input_dir = f"{pscratch_path}/8.3.2/scratch/{recon_folder_path}"
         output_folder = recon_folder_path.replace('/rec', '/seg')
         output_dir = f"{pscratch_path}/8.3.2/scratch/{output_folder}/sam3"
@@ -496,7 +501,7 @@ date
         default_batch_size = 1
         default_patch_size = 400
         default_confidence = [0.5]
-        default_overlap = 0.25  # assuming this was your original default
+        default_overlap = 0.25
         default_qos = "regular"
         default_account = self.config.nersc_account
         default_constraint = "gpu"
@@ -636,7 +641,7 @@ srun --ntasks-per-node=1 --gpus-per-task=4 \
     --batch-size "${{BATCH_SIZE}}" \
     --confidence {confidence_str} \
     --overlap-ratio {overlap} \
-    --prompts 'Phloem Fibers' 'Hydrated Xylem vessels' 'Air-based Pith cells' 'Dehydrated Xylem vessels' \
+    --prompts {prompts_str} \
     --bpe-path "${{BPE_PATH}}" \
     --original-checkpoint "${{ORIG_CKPT}}" \
     --finetuned-checkpoint "${{FT_CKPT}}"
