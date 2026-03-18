@@ -32,6 +32,6 @@ class Config832(BeamlineConfig):
         # NERSC HPC submission settings
         self.ghcr_images832 = self.config["ghcr_images832"]
         self.nersc_recon_settings = self.config["hpc_submission_settings832"]["nersc_reconstruction"]
-        self.nersc_segment_sam3_num_nodes = self.config["hpc_submission_settings832"]["nersc_segmentation_sam3"]["num_nodes"]
-        self.nersc_segment_dino_num_nodes = self.config["hpc_submission_settings832"]["nersc_segmentation_dino"]["num_nodes"]
+        self.nersc_segment_sam3_settings = self.config["hpc_submission_settings832"]["nersc_segmentation_sam3"]
+        self.nersc_segment_dino_settings = self.config["hpc_submission_settings832"]["nersc_segmentation_dino"]
         self.nersc_account = self.config["hpc_submission_settings832"]["nersc_account"]

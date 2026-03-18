@@ -166,6 +166,13 @@ hpc_submission_settings832:
     cpus-per-task: 128
   nersc_segmentation_sam3:
     num_nodes: 4
+    cfs_path: /global/cfs/cdirs/als/data_mover/8.3.2
+    conda_env_path: /global/cfs/cdirs/als/data_mover/8.3.2/envs/sam3-py311
+    seg_scripts_dir: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/inference_latest/forge_feb_seg_model_demo/
+    checkpoints_dir: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/sam3_finetune/sam3/
+    bpe_path: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/sam3_finetune/sam3/bpe_simple_vocab_16e6.txt.gz
+    original_checkpoint_path: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/sam3_finetune/sam3/sam3.pt
+    finetuned_checkpoint_path: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/sam3_finetune/sam3/checkpoint_v6.pt
   nersc_segmentation_dino:
     num_nodes: 4
   nersc_account: als

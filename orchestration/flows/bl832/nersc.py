@@ -474,17 +474,15 @@ date
 
         user = self.client.user()
         pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
-        cfs_path = "/global/cfs/cdirs/als/data_mover/8.3.2"
-        conda_env_path = f"{cfs_path}/envs/sam3-py311"
 
-        # Paths
-        # seg_scripts_dir = f"{cfs_path}/tomography_segmentation_scripts/inference_v4/forge_feb_seg_model_demo/"
-        seg_scripts_dir = f"{cfs_path}/tomography_segmentation_scripts/inference_latest/forge_feb_seg_model_demo/"
-        checkpoints_dir = f"{cfs_path}/tomography_segmentation_scripts/sam3_finetune/sam3/"
-
-        bpe_path = f"{checkpoints_dir}/bpe_simple_vocab_16e6.txt.gz"
-        original_checkpoint = f"{checkpoints_dir}/sam3.pt"
-        # finetuned_checkpoint = f"{checkpoints_dir}/checkpoint_v3.pt"
+        sam3_settings = self.config.nersc_segment_sam3_settings
+        cfs_path = sam3_settings["cfs_path"]
+        conda_env_path = sam3_settings["conda_env_path"]
+        seg_scripts_dir = sam3_settings["seg_scripts_dir"]
+        checkpoints_dir = sam3_settings["checkpoints_dir"]
+        bpe_path = sam3_settings["bpe_path"]
+        original_checkpoint = sam3_settings["original_checkpoint_path"]
+        finetuned_checkpoint = sam3_settings["finetuned_checkpoint_path"]
 
         input_dir = f"{pscratch_path}/8.3.2/scratch/{recon_folder_path}"
         output_folder = recon_folder_path.replace('/rec', '/seg')
@@ -502,7 +500,7 @@ date
         default_qos = "regular"
         default_account = self.config.nersc_account
         default_constraint = "gpu"
-        default_checkpoint = "checkpoint_v6.pt"
+        default_checkpoint = finetuned_checkpoint
 
         # Load options from Prefect variable
         try:
@@ -526,7 +524,7 @@ date
             qos = default_qos
             account = default_account
             constraint = default_constraint
-            checkpoint = default_checkpoint
+            finetuned_checkpoint = default_checkpoint
         else:
             logger.info("Using parameters from nersc-segmentation-options variable")
             batch_size = seg_options.get("batch_size", default_batch_size)
@@ -537,8 +535,7 @@ date
             account = seg_options.get("account", default_account)
             constraint = seg_options.get("constraint", default_constraint)
             checkpoint = seg_options.get("checkpoint", default_checkpoint)
-
-        finetuned_checkpoint = f"{checkpoints_dir}/{checkpoint}"
+            finetuned_checkpoint = f"{checkpoints_dir}/{checkpoint}"
 
         # Format confidence for command line (handles both single value and list)
         if isinstance(confidence, list):
