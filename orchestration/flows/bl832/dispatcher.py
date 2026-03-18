@@ -25,8 +25,9 @@ class FlowParameterMapper:
         # From nersc.py
         "nersc_recon_flow/nersc_recon_flow": [
             "file_path",
+            "num_nodes",
             "config"],
-        "nersc_recon_multinode_flow/nersc_recon_multinode_flow": [
+        "nersc_forge_recon_multisegment_flow/nersc_forge_recon_multisegment_flow": [
             "file_path",
             "num_nodes",
             "config"]

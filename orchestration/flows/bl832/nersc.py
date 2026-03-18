@@ -78,138 +78,8 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
     def reconstruct(
         self,
         file_path: str = "",
-    ) -> bool:
-        """
-        Use NERSC for tomography reconstruction
-
-        :param file_path: Path to the file to reconstruct
-        :return: True if successful, False otherwise
-        """
-        logger.info("Starting NERSC reconstruction process.")
-
-        user = self.client.user()
-
-        raw_path = self.config.nersc832_alsdev_raw.root_path
-        logger.info(f"{raw_path=}")
-
-        recon_image = self.config.ghcr_images832["recon_image"]
-        logger.info(f"{recon_image=}")
-
-        recon_scripts_dir = self.config.nersc832_alsdev_recon_scripts.root_path
-        logger.info(f"{recon_scripts_dir=}")
-
-        scratch_path = self.config.nersc832_alsdev_scratch.root_path
-        logger.info(f"{scratch_path=}")
-
-        pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
-        logger.info(f"{pscratch_path=}")
-
-        path = Path(file_path)
-        folder_name = path.parent.name
-        if not folder_name:
-            folder_name = ""
-
-        file_name = f"{path.stem}.h5"
-
-        logger.info(f"File name: {file_name}")
-        logger.info(f"Folder name: {folder_name}")
-
-        # IMPORTANT: job script must be deindented to the leftmost column or it will fail immediately
-        # Note: If q=debug, there is no minimum time limit
-        # However, if q=preempt, there is a minimum time limit of 2 hours. Otherwise the job won't run.
-        # The realtime queue  can only be used for select accounts (e.g. ALS)
-        job_script = f"""#!/bin/bash
-#SBATCH -q realtime
-#SBATCH -A als
-#SBATCH -C cpu
-#SBATCH --job-name=tomo_recon_{folder_name}_{file_name}
-#SBATCH --output={pscratch_path}/tomo_recon_logs/%x_%j.out
-#SBATCH --error={pscratch_path}/tomo_recon_logs/%x_%j.err
-#SBATCH -N 1
-#SBATCH --ntasks-per-node 1
-#SBATCH --cpus-per-task 128
-#SBATCH --time=0:15:00
-#SBATCH --exclusive
-
-date
-echo "Creating directory {pscratch_path}/8.3.2/raw/{folder_name}"
-mkdir -p {pscratch_path}/8.3.2/raw/{folder_name}
-mkdir -p {pscratch_path}/8.3.2/scratch/{folder_name}
-
-echo "Copying file {raw_path}/{folder_name}/{file_name} to {pscratch_path}/8.3.2/raw/{folder_name}/"
-cp {raw_path}/{folder_name}/{file_name} {pscratch_path}/8.3.2/raw/{folder_name}
-if [ $? -ne 0 ]; then
-    echo "Failed to copy data to pscratch."
-    exit 1
-fi
-
-# chmod -R 2775 {pscratch_path}/8.3.2
-chmod 2775 {pscratch_path}/8.3.2/raw/{folder_name}
-chmod 2775 {pscratch_path}/8.3.2/scratch/{folder_name}
-chmod 664 {pscratch_path}/8.3.2/raw/{folder_name}/{file_name}
-
-
-echo "Verifying copied files..."
-ls -l {pscratch_path}/8.3.2/raw/{folder_name}/
-
-echo "Running reconstruction container..."
-srun podman-hpc run \
---env NUMEXPR_MAX_THREADS=128 \\
---env NUMEXPR_NUM_THREADS=128 \\
---env OMP_NUM_THREADS=128 \\
---env MKL_NUM_THREADS=128 \\
---volume {recon_scripts_dir}/sfapi_reconstruction.py:/alsuser/sfapi_reconstruction.py \
---volume {pscratch_path}/8.3.2:/alsdata \
---volume {pscratch_path}/8.3.2:/alsuser/ \
-{recon_image} \
-bash -c "python sfapi_reconstruction.py {file_name} {folder_name}"
-date
-"""
-
-        try:
-            logger.info("Submitting reconstruction job script to Perlmutter.")
-            perlmutter = self.client.compute(Machine.perlmutter)
-            job = perlmutter.submit_job(job_script)
-            logger.info(f"Submitted job ID: {job.jobid}")
-
-            try:
-                job.update()
-            except Exception as update_err:
-                logger.warning(f"Initial job update failed, continuing: {update_err}")
-
-            time.sleep(60)
-            logger.info(f"Job {job.jobid} current state: {job.state}")
-
-            job.complete()  # Wait until the job completes
-            logger.info("Reconstruction job completed successfully.")
-            return True
-
-        except Exception as e:
-            logger.info(f"Error during job submission or completion: {e}")
-            match = re.search(r"Job not found:\s*(\d+)", str(e))
-
-            if match:
-                jobid = match.group(1)
-                logger.info(f"Attempting to recover job {jobid}.")
-                try:
-                    job = self.client.perlmutter.job(jobid=jobid)
-                    time.sleep(30)
-                    job.complete()
-                    logger.info("Reconstruction job completed successfully after recovery.")
-                    return True
-                except Exception as recovery_err:
-                    logger.error(f"Failed to recover job {jobid}: {recovery_err}")
-                    return False
-            else:
-                # Unknown error: cannot recover
-                return False
-
-    def reconstruct_multinode(
-        self,
-        file_path: str = "",
         num_nodes: int = 2,
     ) -> bool:
-
         """
         Use NERSC for tomography reconstruction
 
@@ -1587,97 +1457,7 @@ def schedule_pruning(
 @flow(name="nersc_recon_flow", flow_run_name="nersc_recon-{file_path}")
 def nersc_recon_flow(
     file_path: str,
-    config: Optional[Config832] = None,
-) -> bool:
-    """
-    Perform tomography reconstruction on NERSC.
-
-    :param file_path: Path to the file to reconstruct.
-    """
-    logger = get_run_logger()
-
-    if config is None:
-        logger.info("Initializing Config")
-        config = Config832()
-
-    logger.info(f"Starting NERSC reconstruction flow for {file_path=}")
-    controller = get_controller(
-        hpc_type=HPC.NERSC,
-        config=config
-    )
-    logger.info("NERSC reconstruction controller initialized")
-
-    nersc_reconstruction_success = controller.reconstruct(
-        file_path=file_path,
-    )
-    logger.info(f"NERSC reconstruction success: {nersc_reconstruction_success}")
-    nersc_multi_res_success = controller.build_multi_resolution(
-        file_path=file_path,
-    )
-    logger.info(f"NERSC multi-resolution success: {nersc_multi_res_success}")
-
-    path = Path(file_path)
-    folder_name = path.parent.name
-    file_name = path.stem
-
-    tiff_file_path = f"{folder_name}/rec{file_name}"
-    zarr_file_path = f"{folder_name}/rec{file_name}.zarr"
-
-    logger.info(f"{tiff_file_path=}")
-    logger.info(f"{zarr_file_path=}")
-
-    # Transfer reconstructed data
-    logger.info("Preparing transfer.")
-    transfer_controller = get_transfer_controller(
-        transfer_type=CopyMethod.GLOBUS,
-        config=config
-    )
-
-    logger.info("Copy from /pscratch/sd/a/alsdev/8.3.2 to /global/cfs/cdirs/als/data_mover/8.3.2/scratch.")
-    transfer_controller.copy(
-        file_path=tiff_file_path,
-        source=config.nersc832_alsdev_pscratch_scratch,
-        destination=config.nersc832_alsdev_scratch
-    )
-
-    transfer_controller.copy(
-        file_path=zarr_file_path,
-        source=config.nersc832_alsdev_pscratch_scratch,
-        destination=config.nersc832_alsdev_scratch
-    )
-
-    logger.info("Copy from NERSC /global/cfs/cdirs/als/data_mover/8.3.2/scratch to data832")
-    transfer_controller.copy(
-        file_path=tiff_file_path,
-        source=config.nersc832_alsdev_pscratch_scratch,
-        destination=config.data832_scratch
-    )
-
-    transfer_controller.copy(
-        file_path=zarr_file_path,
-        source=config.nersc832_alsdev_pscratch_scratch,
-        destination=config.data832_scratch
-    )
-
-    logger.info("Scheduling pruning tasks.")
-    schedule_pruning(
-        config=config,
-        raw_file_path=file_path,
-        tiff_file_path=tiff_file_path,
-        zarr_file_path=zarr_file_path
-    )
-
-    # TODO: Ingest into SciCat
-    if nersc_reconstruction_success and nersc_multi_res_success:
-        return True
-    else:
-        return False
-
-
-@flow(name="nersc_recon_multinode_flow", flow_run_name="nersc_recon_multinode-{file_path}")
-def nersc_recon_multinode_flow(
-    file_path: str,
-    num_nodes: Optional[int] = 16,
+    num_nodes: Optional[int] = 4,
     config: Optional[Config832] = None,
 ) -> bool:
     """
@@ -1706,7 +1486,7 @@ def nersc_recon_multinode_flow(
     logger.info(f"Configured to use {num_nodes} nodes for reconstruction")
 
     logger.info(f"Using multi-node reconstruction with {num_nodes} nodes")
-    nersc_reconstruction_success = controller.reconstruct_multinode(
+    nersc_reconstruction_success = controller.reconstruct(
         file_path=file_path,
         num_nodes=num_nodes
     )
@@ -1858,7 +1638,7 @@ def nersc_forge_recon_segment_flow(
 
     # STEP 2: Run Multinode Reconstruction at NERSC
     logger.info(f"Using multi-node reconstruction with {num_nodes} nodes")
-    recon_result = controller.reconstruct_multinode(
+    recon_result = controller.reconstruct(
         file_path=file_path,
         num_nodes=num_nodes
     )
@@ -2087,7 +1867,7 @@ def nersc_forge_recon_multisegment_flow(
 
     # ── STEP 1: Multinode Reconstruction ─────────────────────────────────────
     logger.info(f"Using multi-node reconstruction with {num_nodes} nodes")
-    recon_result = controller.reconstruct_multinode(
+    recon_result = controller.reconstruct(
         file_path=file_path,
         num_nodes=num_nodes
     )
