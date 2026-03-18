@@ -159,3 +159,9 @@ prefect:
 
 scicat:
   jobs_api_url: https://dataportal.als.lbl.gov/api/ingest/jobs
+
+hpc_submission_settings832:
+  nersc_reconstruction:
+    num_nodes: 16
+  nersc_segmentation:
+    num_nodes: 42

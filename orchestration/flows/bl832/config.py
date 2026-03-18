@@ -28,5 +28,5 @@ class Config832(BeamlineConfig):
         self.alcf832_scratch = self.endpoints["alcf832_scratch"]
         self.scicat = self.config["scicat"]
         self.ghcr_images832 = self.config["ghcr_images832"]
-        self.nersc_recon_num_nodes = 16
-        self.nersc_segment_num_nodes = 42
+        self.nersc_recon_num_nodes = self.config["hpc_submission_settings832"]["nersc_reconstruction"]["num_nodes"]
+        self.nersc_segment_num_nodes = self.config["hpc_submission_settings832"]["nersc_segmentation"]["num_nodes"]
