@@ -167,3 +167,4 @@ hpc_submission_settings832:
     num_nodes: 4
   nersc_segmentation_dino:
     num_nodes: 4
+  nersc_account: als

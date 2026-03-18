@@ -124,6 +124,8 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
         elif num_nodes > 8:
             qos = "premium"
 
+        account = self.config.nersc_account
+
 # If using with a reservation:
 # SBATCH -q regular
 # SBATCH --reservation=_CAP_MarchModCon_CPU
@@ -131,7 +133,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
         # IMPORTANT: job script must be deindented to the leftmost column or it will fail immediately
         job_script = f"""#!/bin/bash
 #SBATCH -q {qos}
-#SBATCH -A als
+#SBATCH -A {account}
 #SBATCH -C cpu
 #SBATCH --job-name=tomo_recon_{folder_name}_{file_name}
 #SBATCH --output={pscratch_path}/tomo_recon_logs/%x_%j.out
@@ -393,10 +395,12 @@ echo "JOB_END=$(date +%s)" >> $TIMING_FILE
         raw_path = f"raw/{folder_name}/{file_name}.h5"
         logger.info(f"{raw_path=}")
 
+        account = self.config.nersc_account
+
         # IMPORTANT: job script must be deindented to the leftmost column or it will fail immediately
         job_script = f"""#!/bin/bash
 #SBATCH -q realtime
-#SBATCH -A als
+#SBATCH -A {account}
 #SBATCH -C cpu
 #SBATCH --job-name=tomo_multires_{folder_name}_{file_name}
 #SBATCH --output={pscratch_path}/tomo_recon_logs/%x_%j.out
@@ -495,7 +499,7 @@ date
         default_confidence = [0.5]
         default_overlap = 0.25  # assuming this was your original default
         default_qos = "regular"
-        default_account = "als"
+        default_account = self.config.nersc_account
         default_constraint = "gpu"
         default_checkpoint = "checkpoint_v6.pt"
 
@@ -532,8 +536,6 @@ date
             account = seg_options.get("account", default_account)
             constraint = seg_options.get("constraint", default_constraint)
             checkpoint = seg_options.get("checkpoint", default_checkpoint)
-        # batch_size = 16
-        # nproc_per_node = 4
 
         finetuned_checkpoint = f"{checkpoints_dir}/{checkpoint}"
 
@@ -542,15 +544,6 @@ date
             confidence_str = " ".join(str(c) for c in confidence)
         else:
             confidence_str = str(confidence)
-
-        # prompts = ["Cortex", "Phloem Fibers", "Air-based Pith cells",
-        # "Water-based Pith cells", "Xylem vessels"]
-        # prompts_str = " ".join([f'"{p}"' for p in prompts])
-
-        # if num_nodes <= 4:
-        #     qos = "realtime"
-        # else:
-        #     qos = "regular"
 
         walltime = "00:59:00"
         job_name = f"seg_{Path(recon_folder_path).name}"
@@ -796,11 +789,11 @@ exit $SEG_STATUS
         DINO_DEFAULTS = {
             "defaults": True,
             "batch_size": 4,
-            "num_nodes": 8,
+            "num_nodes": 4,
             "nproc_per_node": 4,
             "qos": "regular",
-            "account": "amsc006",
-            "constraint": "gpu&hbm80g",
+            "account": self.config.nersc_account,  # amsc006
+            "constraint": "gpu",  # "gpu&hbm80g",
             "walltime": "00:59:00",
         }
         try:
