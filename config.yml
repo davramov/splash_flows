@@ -166,6 +166,9 @@ hpc_submission_settings832:
     cpus-per-task: 128
   nersc_segmentation_sam3:
     num_nodes: 4
+    ntasks-per-node: 1
+    gpus-per-node: 4
+    cpus-per-task: 128
     cfs_path: /global/cfs/cdirs/als/data_mover/8.3.2
     conda_env_path: /global/cfs/cdirs/als/data_mover/8.3.2/envs/sam3-py311
     seg_scripts_dir: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/inference_latest/forge_feb_seg_model_demo/
@@ -180,4 +183,19 @@ hpc_submission_settings832:
     - "Dehydrated Xylem vessels"
   nersc_segmentation_dino:
     num_nodes: 4
+    ntasks-per-node: 1
+    gpus-per-node: 4
+    cpus-per-task: 128
+    cfs_path: /global/cfs/cdirs/als/data_mover/8.3.2
+    conda_env_path: /global/cfs/cdirs/als/data_mover/8.3.2/envs/dino_demo
+    seg_scripts_dir: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/inference_v5_multiseg/forge_feb_seg_model_demo/
+    dino_checkpoint_path: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/dino/best.ckpt
+  nersc_combine_segmentations:
+    num_nodes: 4
+    ntasks: 1
+    cpus-per-task: 128
+    cfs_path: /global/cfs/cdirs/als/data_mover/8.3.2
+    conda_env_path: /global/cfs/cdirs/als/data_mover/8.3.2/envs/dino_demo
+    seg_scripts_dir: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/inference_latest/forge_feb_seg_model_demo
+
   nersc_account: als

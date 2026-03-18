@@ -484,6 +484,10 @@ date
         original_checkpoint = sam3_settings["original_checkpoint_path"]
         finetuned_checkpoint = sam3_settings["finetuned_checkpoint_path"]
 
+        ntasks_per_node = sam3_settings["ntasks-per-node"]
+        gpus_per_node = sam3_settings["gpus-per-node"]
+        cpus_per_task = sam3_settings["cpus-per-task"]
+
         prompts = sam3_settings["prompts"]
         if not isinstance(prompts, list) or not prompts:
             raise ValueError("nersc_segmentation_sam3.prompts must be a non-empty list")
@@ -559,9 +563,9 @@ date
 #SBATCH -C {constraint} # gpu
 #SBATCH --job-name={job_name}
 #SBATCH --time={walltime}
-#SBATCH --ntasks-per-node=1
-#SBATCH --gpus-per-node=4
-#SBATCH --cpus-per-task=128
+#SBATCH --ntasks-per-node={ntasks_per_node}
+#SBATCH --gpus-per-node={gpus_per_node}
+#SBATCH --cpus-per-task={cpus_per_task}
 #SBATCH --output={pscratch_path}/tomo_seg_logs/%x_%j.out
 #SBATCH --error={pscratch_path}/tomo_seg_logs/%x_%j.err
 
@@ -776,11 +780,16 @@ exit $SEG_STATUS
 
         user = self.client.user()
         pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
-        cfs_path = "/global/cfs/cdirs/als/data_mover/8.3.2"
-        conda_env_path = f"{cfs_path}/envs/dino_demo"
 
-        seg_scripts_dir = f"{cfs_path}/tomography_segmentation_scripts/inference_v5_multiseg/forge_feb_seg_model_demo"
-        dino_checkpoint = f"{cfs_path}/tomography_segmentation_scripts/dino/best.ckpt"
+        # Load from config
+        dino_settings = self.config.nersc_segment_dino_settings
+        cfs_path = dino_settings["cfs_path"]
+        conda_env_path = dino_settings["conda_env_path"]
+        seg_scripts_dir = dino_settings["seg_scripts_dir"]
+        dino_checkpoint = dino_settings["dino_checkpoint_path"]
+        cpus_per_task = dino_settings["cpus-per-task"]
+        gpus_per_node = dino_settings["gpus-per-node"]
+        ntasks_per_node = dino_settings["ntasks-per-node"]
 
         input_dir = f"{pscratch_path}/8.3.2/scratch/{recon_folder_path}"
         seg_folder = recon_folder_path.replace("/rec", "/seg")
@@ -829,9 +838,9 @@ exit $SEG_STATUS
 #SBATCH --reservation=_CAP_MarchModCon_GPU
 #SBATCH --job-name={job_name}
 #SBATCH --time={walltime}
-#SBATCH --ntasks-per-node=1
-#SBATCH --gpus-per-node=4
-#SBATCH --cpus-per-task=128
+#SBATCH --ntasks-per-node={ntasks_per_node}
+#SBATCH --gpus-per-node={gpus_per_node}
+#SBATCH --cpus-per-task={cpus_per_task}
 #SBATCH --output={pscratch_path}/tomo_seg_logs/%x_%j.out
 #SBATCH --error={pscratch_path}/tomo_seg_logs/%x_%j.err
 
@@ -962,10 +971,10 @@ exit $SEG_STATUS
 
         user = self.client.user()
         pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
-        cfs_path = "/global/cfs/cdirs/als/data_mover/8.3.2"
-        conda_env_path = f"{cfs_path}/envs/dino_demo"
 
-        seg_scripts_dir = f"{cfs_path}/tomography_segmentation_scripts/inference_latest/forge_feb_seg_model_demo"
+        combine_settings = self.config.nersc_combine_segmentation_settings
+        conda_env_path = combine_settings["conda_env_path"]
+        seg_scripts_dir = combine_settings["seg_scripts_dir"]
 
         seg_folder = recon_folder_path.replace("/rec", "/seg")
         input_dir = f"{pscratch_path}/8.3.2/scratch/{recon_folder_path}"
@@ -980,9 +989,9 @@ exit $SEG_STATUS
 
         COMBINE_DEFAULTS = {
             "defaults": True,
-            "num_nodes": 8,
+            "num_nodes": combine_settings["num_nodes"],
             "qos": "regular",
-            "account": "amsc006",
+            "account": self.config.nersc_account,  # "amsc006",
             "constraint": "cpu",
             "walltime": "01:00:00",
             "dilate_px": 5,
@@ -1008,16 +1017,16 @@ exit $SEG_STATUS
 
         job_name = f"combine_{Path(recon_folder_path).name}"
 
+# #SBATCH --reservation=_CAP_MarchModCon_CPU
         job_script = f"""#!/bin/bash
 #SBATCH -q {qos}
 #SBATCH -A {account}
 #SBATCH -N {num_nodes}
 #SBATCH -C {constraint}
-#SBATCH --reservation=_CAP_MarchModCon_CPU
 #SBATCH --job-name={job_name}
 #SBATCH --time={walltime}
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=128
+#SBATCH --ntasks={combine_settings["ntasks"]}
+#SBATCH --cpus-per-task={combine_settings["cpus-per-task"]}
 #SBATCH --output={pscratch_path}/tomo_seg_logs/%x_%j.out
 #SBATCH --error={pscratch_path}/tomo_seg_logs/%x_%j.err
 
