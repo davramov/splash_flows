@@ -119,9 +119,9 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
 
         if num_nodes == 8:
             qos = "debug"
-        if num_nodes < 8:
+        elif num_nodes < 8:
             qos = "realtime"
-        if num_nodes > 8:
+        elif num_nodes > 8:
             qos = "premium"
 
 # If using with a reservation:
