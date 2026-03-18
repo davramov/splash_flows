@@ -125,6 +125,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
             qos = "premium"
 
         account = self.config.nersc_account
+        cpus_per_task = self.config.nersc_recon_settings.get("cpus-per-task", 128)
 
 # If using with a reservation:
 # SBATCH -q regular
@@ -140,7 +141,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
 #SBATCH --error={pscratch_path}/tomo_recon_logs/%x_%j.err
 #SBATCH -N {num_nodes}
 #SBATCH --ntasks={num_nodes}
-#SBATCH --cpus-per-task=128
+#SBATCH --cpus-per-task={cpus_per_task}
 #SBATCH --time=0:30:00
 #SBATCH --exclusive
 #SBATCH --image={recon_image}
@@ -1475,7 +1476,7 @@ def nersc_recon_flow(
     logger.info("NERSC reconstruction controller initialized")
 
     if num_nodes is None:
-        num_nodes = config.nersc_recon_num_nodes
+        num_nodes = config.nersc_recon_settings.get("num_nodes", 4)
     logger.info(f"Configured to use {num_nodes} nodes for reconstruction")
 
     logger.info(f"Using multi-node reconstruction with {num_nodes} nodes")
@@ -1617,7 +1618,7 @@ def nersc_petiole_segment_flow(
     logger.info("NERSC controller initialized")
 
     if num_nodes is None:
-        num_nodes = config.nersc_recon_num_nodes
+        num_nodes = config.nersc_recon_settings.get("num_nodes", 4)
     logger.info(f"Configured to use {num_nodes} nodes for reconstruction")
 
     nersc_reconstruction_success = False

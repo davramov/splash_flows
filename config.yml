@@ -163,6 +163,7 @@ scicat:
 hpc_submission_settings832:
   nersc_reconstruction:
     num_nodes: 4
+    cpus-per-task: 128
   nersc_segmentation_sam3:
     num_nodes: 4
   nersc_segmentation_dino:
