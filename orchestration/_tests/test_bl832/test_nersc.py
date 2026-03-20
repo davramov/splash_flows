@@ -49,6 +49,7 @@ def mock_sfapi_client(mocker):
 def mock_config832(mocker):
     """
     Mock Config832 constructor so any call to Config832() returns our mock.
+
     Tests that call flows must pass config=None so Prefect's type validation
     is never given a MagicMock — the flow will call Config832() internally and
     get our mock back.
@@ -72,7 +73,43 @@ def mock_config832(mocker):
         ep.root_path = f"/mock/{attr}"
         setattr(mock_config, attr, ep)
 
+    mock_config.nersc_account = "mock_account"
     mock_config.nersc_recon_num_nodes = 4
+    mock_config.nersc_recon_settings = {
+        "cpus-per-task": 128,
+        "num_nodes": 4,
+    }
+    mock_config.nersc_segment_sam3_settings = {
+        "cfs_path": "/mock/cfs",
+        "conda_env_path": "/mock/conda/sam3",
+        "seg_scripts_dir": "/mock/seg_scripts/sam3",
+        "checkpoints_dir": "/mock/checkpoints",
+        "bpe_path": "/mock/bpe.model",
+        "original_checkpoint_path": "/mock/original.pt",
+        "finetuned_checkpoint_path": "/mock/finetuned.pt",
+        "ntasks-per-node": 1,
+        "gpus-per-node": 4,
+        "cpus-per-task": 32,
+        "prompts": ["cell wall", "lumen"],
+    }
+    mock_config.nersc_segment_dino_settings = {
+        "cfs_path": "/mock/cfs",
+        "conda_env_path": "/mock/conda/dino",
+        "seg_scripts_dir": "/mock/seg_scripts/dino",
+        "dino_checkpoint_path": "/mock/dino.pt",
+        "cpus-per-task": 32,
+        "gpus-per-node": 4,
+        "ntasks-per-node": 1,
+        "reservation": "",
+    }
+    mock_config.nersc_combine_segmentation_settings = {
+        "conda_env_path": "/mock/conda/combine",
+        "seg_scripts_dir": "/mock/seg_scripts/combine",
+        "num_nodes": 1,
+        "ntasks": 128,
+        "cpus-per-task": 1,
+        "reservation": "",
+    }
 
     mocker.patch("orchestration.flows.bl832.nersc.Config832", return_value=mock_config)
     return mock_config
@@ -158,7 +195,9 @@ def test_reconstruct_success(mocker, mock_sfapi_client, mock_config832):
     mock_sfapi_client.compute.assert_called_once_with(Machine.perlmutter)
     mock_sfapi_client.compute.return_value.submit_job.assert_called_once()
     mock_sfapi_client.compute.return_value.submit_job.return_value.complete.assert_called_once()
-    assert result is True
+    assert isinstance(result, dict)
+    assert result["success"] is True
+    assert result["job_id"] == "12345"
 
 
 def test_reconstruct_submission_failure(mocker, mock_sfapi_client, mock_config832):
@@ -342,7 +381,6 @@ def test_segmentation_dino_output_paths(mocker, mock_sfapi_client, mock_config83
     controller.segmentation_dino(recon_folder_path="folder/recfile")
 
     script = captured_scripts[0]
-    # The rec→seg substitution turns "recfile" into "segfile"
     assert "segfile" in script
     assert "/dino" in script
 
@@ -430,7 +468,9 @@ def test_nersc_segmentation_sam3_task_success(mocker, mock_config832):
     )
 
     mock_controller.segmentation_sam3.assert_called_once_with(recon_folder_path="folder/recfile")
-    assert result == {"success": True, "job_id": "99", "timing": None, "output_dir": "/out"}
+    assert isinstance(result, dict)
+    assert result["success"] is True
+    assert result["job_id"] == "99"
 
 
 def test_nersc_segmentation_sam3_task_failure(mocker, mock_config832):
@@ -448,6 +488,7 @@ def test_nersc_segmentation_sam3_task_failure(mocker, mock_config832):
         config=mock_config832
     )
 
+    assert isinstance(result, dict)
     assert result["success"] is False
 
 
@@ -518,84 +559,24 @@ def test_nersc_combine_segmentations_task_failure(mocker, mock_config832):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# nersc_forge_recon_segment_flow
+# nersc_petiole_segment_flow  (recon + SAM3 + DINO + combine)
+#
+# Replaces the former nersc_forge_recon_multisegment_flow tests.
+# The cleaned nersc.py exposes nersc_petiole_segment_flow as the canonical
+# multi-segmentation flow; controller.reconstruct() is the correct method name
+# (reconstruct_multinode no longer exists).
 #
 # Prefect validates the `config` parameter against Optional[Config832] at
-# runtime, so passing a MagicMock raises ParameterTypeError. The fix is to
-# pass config=None — the flow's `if config is None: config = Config832()`
-# branch then runs, calling the already-mocked constructor and returning our
-# mock_config832 instance.
+# runtime, so we pass config=None and let the flow call Config832() internally,
+# which returns mock_config832 via the fixture patch.
 # ──────────────────────────────────────────────────────────────────────────────
 
-def test_forge_recon_segment_flow_success(mocker, mock_config832, mock_recon_success, mock_seg_sam3_success):
-    from orchestration.flows.bl832.nersc import nersc_forge_recon_segment_flow
+def test_petiole_segment_flow_both_succeed(mocker, mock_config832, mock_recon_success):
+    """Recon + SAM3 + DINO all succeed → combine is called → flow returns True."""
+    from orchestration.flows.bl832.nersc import nersc_petiole_segment_flow
 
     mock_controller = mocker.MagicMock()
-    mock_controller.reconstruct_multinode.return_value = mock_recon_success
-    mocker.patch("orchestration.flows.bl832.nersc.get_controller", return_value=mock_controller)
-
-    mock_transfer = mocker.MagicMock()
-    mock_transfer.copy.return_value = True
-    mocker.patch("orchestration.flows.bl832.nersc.get_transfer_controller", return_value=mock_transfer)
-    mocker.patch("orchestration.flows.bl832.nersc.get_prune_controller", return_value=mocker.MagicMock())
-
-    mock_seg_task = mocker.patch(
-        "orchestration.flows.bl832.nersc.nersc_segmentation_sam3_task",
-        return_value=mock_seg_sam3_success
-    )
-
-    result = nersc_forge_recon_segment_flow(file_path="folder/file.h5", num_nodes=4)
-
-    assert result is True
-    mock_controller.reconstruct_multinode.assert_called_once()
-    mock_seg_task.assert_called_once()
-    assert mock_transfer.copy.call_count >= 2
-
-
-def test_forge_recon_segment_flow_recon_failure(mocker, mock_config832):
-    from orchestration.flows.bl832.nersc import nersc_forge_recon_segment_flow
-
-    mock_controller = mocker.MagicMock()
-    mock_controller.reconstruct_multinode.return_value = {"success": False, "job_id": None, "timing": None}
-    mocker.patch("orchestration.flows.bl832.nersc.get_controller", return_value=mock_controller)
-    mocker.patch("orchestration.flows.bl832.nersc.get_transfer_controller", return_value=mocker.MagicMock())
-    mocker.patch("orchestration.flows.bl832.nersc.get_prune_controller", return_value=mocker.MagicMock())
-
-    with pytest.raises(ValueError, match="Reconstruction at NERSC Failed"):
-        nersc_forge_recon_segment_flow(file_path="folder/file.h5", num_nodes=4)
-
-
-def test_forge_recon_segment_flow_seg_failure(mocker, mock_config832, mock_recon_success):
-    """Flow should return False (not raise) when only segmentation fails."""
-    from orchestration.flows.bl832.nersc import nersc_forge_recon_segment_flow
-
-    mock_controller = mocker.MagicMock()
-    mock_controller.reconstruct_multinode.return_value = mock_recon_success
-    mocker.patch("orchestration.flows.bl832.nersc.get_controller", return_value=mock_controller)
-
-    mock_transfer = mocker.MagicMock()
-    mock_transfer.copy.return_value = True
-    mocker.patch("orchestration.flows.bl832.nersc.get_transfer_controller", return_value=mock_transfer)
-    mocker.patch("orchestration.flows.bl832.nersc.get_prune_controller", return_value=mocker.MagicMock())
-    mocker.patch(
-        "orchestration.flows.bl832.nersc.nersc_segmentation_sam3_task",
-        return_value={"success": False, "job_id": None, "timing": None, "output_dir": None}
-    )
-
-    result = nersc_forge_recon_segment_flow(file_path="folder/file.h5", num_nodes=4)
-
-    assert result is False
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# nersc_forge_recon_multisegment_flow
-# ──────────────────────────────────────────────────────────────────────────────
-
-def test_forge_recon_multisegment_flow_both_succeed(mocker, mock_config832, mock_recon_success):
-    from orchestration.flows.bl832.nersc import nersc_forge_recon_multisegment_flow
-
-    mock_controller = mocker.MagicMock()
-    mock_controller.reconstruct_multinode.return_value = mock_recon_success
+    mock_controller.reconstruct.return_value = mock_recon_success
     mocker.patch("orchestration.flows.bl832.nersc.get_controller", return_value=mock_controller)
 
     mock_transfer = mocker.MagicMock()
@@ -608,25 +589,26 @@ def test_forge_recon_multisegment_flow_both_succeed(mocker, mock_config832, mock
     mock_combine_task = mocker.patch("orchestration.flows.bl832.nersc.nersc_combine_segmentations_task")
 
     mock_sam3_task.submit.return_value = _make_future(
-        mocker, {"success": True, "job_id": "1", "timing": None, "output_dir": "/out"}
+        mocker, {"success": True, "job_id": "1", "timing": None, "output_dir": "/out/sam3"}
     )
     mock_dino_task.submit.return_value = _make_future(mocker, True)
     mock_combine_task.submit.return_value = _make_future(mocker, True)
 
-    result = nersc_forge_recon_multisegment_flow(file_path="folder/file.h5", num_nodes=4)
+    result = nersc_petiole_segment_flow(file_path="folder/file.h5", num_nodes=4, config=None)
 
     assert result is True
+    mock_controller.reconstruct.assert_called_once()
     mock_sam3_task.submit.assert_called_once()
     mock_dino_task.submit.assert_called_once()
     mock_combine_task.submit.assert_called_once()
 
 
-def test_forge_recon_multisegment_flow_only_sam3_succeeds(mocker, mock_config832, mock_recon_success):
+def test_petiole_segment_flow_only_sam3_succeeds(mocker, mock_config832, mock_recon_success):
     """When only SAM3 succeeds, combine should be skipped but flow returns True."""
-    from orchestration.flows.bl832.nersc import nersc_forge_recon_multisegment_flow
+    from orchestration.flows.bl832.nersc import nersc_petiole_segment_flow
 
     mock_controller = mocker.MagicMock()
-    mock_controller.reconstruct_multinode.return_value = mock_recon_success
+    mock_controller.reconstruct.return_value = mock_recon_success
     mocker.patch("orchestration.flows.bl832.nersc.get_controller", return_value=mock_controller)
 
     mock_transfer = mocker.MagicMock()
@@ -639,21 +621,22 @@ def test_forge_recon_multisegment_flow_only_sam3_succeeds(mocker, mock_config832
     mock_combine_task = mocker.patch("orchestration.flows.bl832.nersc.nersc_combine_segmentations_task")
 
     mock_sam3_task.submit.return_value = _make_future(
-        mocker, {"success": True, "job_id": "1", "timing": None, "output_dir": "/out"}
+        mocker, {"success": True, "job_id": "1", "timing": None, "output_dir": "/out/sam3"}
     )
     mock_dino_task.submit.return_value = _make_future(mocker, False)
 
-    result = nersc_forge_recon_multisegment_flow(file_path="folder/file.h5", num_nodes=4)
+    result = nersc_petiole_segment_flow(file_path="folder/file.h5", num_nodes=4, config=None)
 
     assert result is True
     mock_combine_task.submit.assert_not_called()
 
 
-def test_forge_recon_multisegment_flow_both_seg_fail(mocker, mock_config832, mock_recon_success):
-    from orchestration.flows.bl832.nersc import nersc_forge_recon_multisegment_flow
+def test_petiole_segment_flow_both_seg_fail(mocker, mock_config832, mock_recon_success):
+    """Recon succeeds but both segmentations fail → flow returns False."""
+    from orchestration.flows.bl832.nersc import nersc_petiole_segment_flow
 
     mock_controller = mocker.MagicMock()
-    mock_controller.reconstruct_multinode.return_value = mock_recon_success
+    mock_controller.reconstruct.return_value = mock_recon_success
     mocker.patch("orchestration.flows.bl832.nersc.get_controller", return_value=mock_controller)
 
     mock_transfer = mocker.MagicMock()
@@ -670,20 +653,21 @@ def test_forge_recon_multisegment_flow_both_seg_fail(mocker, mock_config832, moc
     )
     mock_dino_task.submit.return_value = _make_future(mocker, False)
 
-    result = nersc_forge_recon_multisegment_flow(file_path="folder/file.h5", num_nodes=4)
+    result = nersc_petiole_segment_flow(file_path="folder/file.h5", num_nodes=4, config=None)
 
     assert result is False
     mock_combine_task.submit.assert_not_called()
 
 
-def test_forge_recon_multisegment_flow_recon_failure(mocker, mock_config832):
-    from orchestration.flows.bl832.nersc import nersc_forge_recon_multisegment_flow
+def test_petiole_segment_flow_recon_failure(mocker, mock_config832):
+    """Recon failure should raise ValueError immediately."""
+    from orchestration.flows.bl832.nersc import nersc_petiole_segment_flow
 
     mock_controller = mocker.MagicMock()
-    mock_controller.reconstruct_multinode.return_value = {"success": False, "job_id": None, "timing": None}
+    mock_controller.reconstruct.return_value = {"success": False, "job_id": None, "timing": None}
     mocker.patch("orchestration.flows.bl832.nersc.get_controller", return_value=mock_controller)
     mocker.patch("orchestration.flows.bl832.nersc.get_transfer_controller", return_value=mocker.MagicMock())
     mocker.patch("orchestration.flows.bl832.nersc.get_prune_controller", return_value=mocker.MagicMock())
 
     with pytest.raises(ValueError, match="Reconstruction at NERSC Failed"):
-        nersc_forge_recon_multisegment_flow(file_path="folder/file.h5", num_nodes=4)
+        nersc_petiole_segment_flow(file_path="folder/file.h5", num_nodes=4, config=None)

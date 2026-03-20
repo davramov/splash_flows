@@ -188,7 +188,9 @@ def test_reconstruct_success(mock_sfapi_client, mock_config832):
     mock_sfapi_client.compute.return_value.submit_job.return_value.complete.assert_called_once()
 
     # Assert that the method returns True
-    assert result is True, "reconstruct should return True on successful job completion."
+    assert isinstance(result, dict)
+    assert result["success"] is True
+    assert result["job_id"] == "12345"
 
 
 def test_reconstruct_submission_failure(mock_sfapi_client, mock_config832):

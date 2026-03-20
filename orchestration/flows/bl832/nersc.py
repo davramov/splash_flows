@@ -491,7 +491,7 @@ date
         prompts = sam3_settings["prompts"]
         if not isinstance(prompts, list) or not prompts:
             raise ValueError("nersc_segmentation_sam3.prompts must be a non-empty list")
-        prompts_str = " ".join(f"'{p}'" for p in prompts)\
+        prompts_str = " ".join(f"'{p}'" for p in prompts)
 
         input_dir = f"{pscratch_path}/8.3.2/scratch/{recon_folder_path}"
         output_folder = recon_folder_path.replace('/rec', '/seg')
@@ -510,6 +510,7 @@ date
         default_account = self.config.nersc_account
         default_constraint = "gpu"
         default_checkpoint = finetuned_checkpoint
+        default_reservation = ""
 
         # Load options from Prefect variable
         try:
@@ -534,6 +535,7 @@ date
             account = default_account
             constraint = default_constraint
             finetuned_checkpoint = default_checkpoint
+            reservation = default_reservation
         else:
             logger.info("Using parameters from nersc-segmentation-options variable")
             batch_size = seg_options.get("batch_size", default_batch_size)
@@ -545,20 +547,21 @@ date
             constraint = seg_options.get("constraint", default_constraint)
             checkpoint = seg_options.get("checkpoint", default_checkpoint)
             finetuned_checkpoint = f"{checkpoints_dir}/{checkpoint}"
+            reservation = seg_options.get("reservation", default_reservation)
 
+        # #SBATCH --reservation=_CAP_MarchModCon_GPU
+        reservation_line = f"#SBATCH --reservation={reservation}" if reservation else ""
         # Format confidence for command line (handles both single value and list)
         if isinstance(confidence, list):
             confidence_str = " ".join(str(c) for c in confidence)
         else:
             confidence_str = str(confidence)
-
         walltime = "00:59:00"
         job_name = f"seg_{Path(recon_folder_path).name}"
-
         job_script = f"""#!/bin/bash
 #SBATCH -q {qos}
 #SBATCH -A {account}
-#SBATCH --reservation=_CAP_MarchModCon_GPU
+{reservation_line}
 #SBATCH -N {num_nodes}
 #SBATCH -C {constraint} # gpu
 #SBATCH --job-name={job_name}
@@ -790,6 +793,7 @@ exit $SEG_STATUS
         cpus_per_task = dino_settings["cpus-per-task"]
         gpus_per_node = dino_settings["gpus-per-node"]
         ntasks_per_node = dino_settings["ntasks-per-node"]
+        reservation = dino_settings.get("reservation", "")
 
         input_dir = f"{pscratch_path}/8.3.2/scratch/{recon_folder_path}"
         seg_folder = recon_folder_path.replace("/rec", "/seg")
@@ -806,6 +810,7 @@ exit $SEG_STATUS
             "qos": "regular",
             "account": self.config.nersc_account,  # amsc006
             "constraint": "gpu",  # "gpu&hbm80g",
+            "reservation": reservation,  # e.g. "_CAP_MarchModCon_GPU"
             "walltime": "00:59:00",
         }
         try:
@@ -828,14 +833,16 @@ exit $SEG_STATUS
         constraint = opts["constraint"]
         walltime = opts["walltime"]
 
-        job_name = f"dino_{Path(recon_folder_path).name}"
+        reservation = opts.get("reservation", "")
+        reservation_line = f"#SBATCH --reservation={reservation}" if reservation else ""
 
+        job_name = f"dino_{Path(recon_folder_path).name}"
         job_script = f"""#!/bin/bash
 #SBATCH -q {qos}
 #SBATCH -A {account}
 #SBATCH -N {num_nodes}
 #SBATCH -C {constraint}
-#SBATCH --reservation=_CAP_MarchModCon_GPU
+{reservation_line}
 #SBATCH --job-name={job_name}
 #SBATCH --time={walltime}
 #SBATCH --ntasks-per-node={ntasks_per_node}
@@ -995,6 +1002,7 @@ exit $SEG_STATUS
             "constraint": "cpu",
             "walltime": "01:00:00",
             "dilate_px": 5,
+            "reservation": combine_settings["reservation"]
         }
         try:
             seg_options = Variable.get("nersc-combine-seg-options", default={"defaults": True}, _sync=True)
@@ -1014,6 +1022,9 @@ exit $SEG_STATUS
         constraint = opts["constraint"]
         walltime = opts["walltime"]
         dilate_px = opts["dilate_px"]
+        reservation = opts["reservation"]
+
+        reservation_line = f"#SBATCH --reservation={reservation}" if reservation else ""
 
         job_name = f"combine_{Path(recon_folder_path).name}"
 
@@ -1021,6 +1032,7 @@ exit $SEG_STATUS
         job_script = f"""#!/bin/bash
 #SBATCH -q {qos}
 #SBATCH -A {account}
+{reservation_line}
 #SBATCH -N {num_nodes}
 #SBATCH -C {constraint}
 #SBATCH --job-name={job_name}
@@ -1991,10 +2003,13 @@ def nersc_segmentation_sam3_task(
     nersc_segmentation_success = tomography_controller.segmentation_sam3(
         recon_folder_path=recon_folder_path,
     )
-    if not nersc_segmentation_success:
-        logger.error("Segmentation Failed.")
+    if isinstance(nersc_segmentation_success, dict):
+        success = nersc_segmentation_success["success"]
+        logger.info(f"Segmentation success: {success}")
     else:
-        logger.info("Segmentation Successful.")
+        success = bool(nersc_segmentation_success)
+    if not success:
+        logger.error("Segmentation Failed.")
     return nersc_segmentation_success
 
 
