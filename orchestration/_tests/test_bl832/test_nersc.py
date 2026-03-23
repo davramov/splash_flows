@@ -53,6 +53,10 @@ def mock_config832(mocker):
     Tests that call flows must pass config=None so Prefect's type validation
     is never given a MagicMock — the flow will call Config832() internally and
     get our mock back.
+
+    All settings dicts must be fully populated to match the config YAML schema,
+    because _load_job_options() passes config_settings directly as the defaults
+    dict and then accesses keys by name.
     """
     mock_config = mocker.MagicMock()
 
@@ -73,42 +77,73 @@ def mock_config832(mocker):
         ep.root_path = f"/mock/{attr}"
         setattr(mock_config, attr, ep)
 
-    mock_config.nersc_account = "mock_account"
-    mock_config.nersc_recon_num_nodes = 4
     mock_config.nersc_recon_settings = {
-        "cpus-per-task": 128,
+        "qos": "realtime",
+        "account": "mock_account",
+        "reservation": "",
         "num_nodes": 4,
+        "cpus-per-task": 128,
+        "walltime": "0:30:00",
+    }
+    mock_config.nersc_multiresolution_settings = {
+        "qos": "realtime",
+        "account": "mock_account",
+        "reservation": "",
+        "cpus-per-task": 128,
+        "walltime": "0:15:00",
     }
     mock_config.nersc_segment_sam3_settings = {
+        "qos": "regular",
+        "account": "mock_account",
+        "constraint": "gpu",
+        "reservation": "",
+        "num_nodes": 4,
+        "ntasks-per-node": 1,
+        "gpus-per-node": 4,
+        "cpus-per-task": 32,
+        "walltime": "00:59:00",
+        "batch_size": 1,
+        "patch_size": 400,
+        "confidence": [0.5],
+        "overlap": 0.25,
+        "prompts": ["cell wall", "lumen"],
         "cfs_path": "/mock/cfs",
         "conda_env_path": "/mock/conda/sam3",
         "seg_scripts_dir": "/mock/seg_scripts/sam3",
         "checkpoints_dir": "/mock/checkpoints",
         "bpe_path": "/mock/bpe.model",
         "original_checkpoint_path": "/mock/original.pt",
-        "finetuned_checkpoint_path": "/mock/finetuned.pt",
-        "ntasks-per-node": 1,
-        "gpus-per-node": 4,
-        "cpus-per-task": 32,
-        "prompts": ["cell wall", "lumen"],
+        "finetuned_checkpoint_path": "/mock/checkpoints/finetuned.pt",
     }
     mock_config.nersc_segment_dino_settings = {
+        "qos": "regular",
+        "account": "mock_account",
+        "constraint": "gpu",
+        "reservation": "",
+        "num_nodes": 4,
+        "ntasks-per-node": 1,
+        "nproc_per_node": 4,
+        "gpus-per-node": 4,
+        "cpus-per-task": 32,
+        "walltime": "00:59:00",
+        "batch_size": 4,
         "cfs_path": "/mock/cfs",
         "conda_env_path": "/mock/conda/dino",
         "seg_scripts_dir": "/mock/seg_scripts/dino",
         "dino_checkpoint_path": "/mock/dino.pt",
-        "cpus-per-task": 32,
-        "gpus-per-node": 4,
-        "ntasks-per-node": 1,
-        "reservation": "",
     }
     mock_config.nersc_combine_segmentation_settings = {
-        "conda_env_path": "/mock/conda/combine",
-        "seg_scripts_dir": "/mock/seg_scripts/combine",
+        "qos": "regular",
+        "account": "mock_account",
+        "constraint": "cpu",
+        "reservation": "",
         "num_nodes": 1,
         "ntasks": 128,
         "cpus-per-task": 1,
-        "reservation": "",
+        "walltime": "01:00:00",
+        "dilate_px": 5,
+        "conda_env_path": "/mock/conda/combine",
+        "seg_scripts_dir": "/mock/seg_scripts/combine",
     }
 
     mocker.patch("orchestration.flows.bl832.nersc.Config832", return_value=mock_config)

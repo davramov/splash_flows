@@ -150,12 +150,31 @@ def mock_sfapi_client():
 def mock_config832():
     """
     Mock the Config832 class to provide necessary configurations.
+
+    All settings dicts must be fully populated to match the config YAML schema,
+    because _load_job_options() passes config_settings directly as the defaults
+    dict and then accesses keys by name.
     """
     with patch("orchestration.flows.bl832.nersc.Config832") as MockConfig:
         mock_config = MockConfig.return_value
-        mock_config.harbor_images832 = {
+        mock_config.ghcr_images832 = {
             "recon_image": "mock_recon_image",
             "multires_image": "mock_multires_image",
+        }
+        mock_config.nersc_recon_settings = {
+            "qos": "realtime",
+            "account": "mock_account",
+            "reservation": "",
+            "num_nodes": 4,
+            "cpus-per-task": 128,
+            "walltime": "0:30:00",
+        }
+        mock_config.nersc_multiresolution_settings = {
+            "qos": "realtime",
+            "account": "mock_account",
+            "reservation": "",
+            "cpus-per-task": 128,
+            "walltime": "0:15:00",
         }
         mock_config.apps = {"als_transfer": "some_config"}
         yield mock_config
@@ -264,7 +283,17 @@ def test_job_submission(mock_sfapi_client):
     from orchestration.flows.bl832.nersc import NERSCTomographyHPCController
     from sfapi_client.compute import Machine
 
-    controller = NERSCTomographyHPCController(client=mock_sfapi_client, config=MagicMock())
+    mock_config = MagicMock()
+    mock_config.nersc_recon_settings = {
+        "qos": "realtime",
+        "account": "mock_account",
+        "reservation": "",
+        "num_nodes": 4,
+        "cpus-per-task": 128,
+        "walltime": "0:30:00",
+    }
+
+    controller = NERSCTomographyHPCController(client=mock_sfapi_client, config=mock_config)
     file_path = "path/to/file.h5"
 
     # Mock Path to extract file and folder names
