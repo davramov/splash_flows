@@ -43,23 +43,11 @@ deployments:
     name: nersc_recon_flow_pool
     work_queue_name: nersc_recon_flow_queue
 
-- name: nersc_recon_multinode_flow
-  entrypoint: orchestration/flows/bl832/nersc.py:nersc_recon_multinode_flow
+- name: nersc_petiole_segment_flow
+  entrypoint: orchestration/flows/bl832/nersc.py:nersc_petiole_segment_flow
   work_pool:
     name: nersc_recon_flow_pool
-    work_queue_name: nersc_recon_multinode_flow_queue
-
-- name: nersc_forge_recon_segment_flow
-  entrypoint: orchestration/flows/bl832/nersc.py:nersc_forge_recon_segment_flow
-  work_pool:
-    name: nersc_recon_flow_pool
-    work_queue_name: nersc_forge_recon_segment_flow_queue
-
-- name: nersc_forge_recon_multisegment_flow
-  entrypoint: orchestration/flows/bl832/nersc.py:nersc_forge_recon_multisegment_flow
-  work_pool:
-    name: nersc_recon_flow_pool
-    work_queue_name: nersc_forge_recon_multisegment_flow_queue
+    work_queue_name: nersc_petiole_segment_flow_queue
 
 - name: nersc_streaming_flow
   entrypoint: orchestration/flows/bl832/nersc.py:nersc_streaming_flow
