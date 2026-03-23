@@ -162,14 +162,43 @@ scicat:
 
 hpc_submission_settings832:
   nersc_reconstruction:
+    # ── SLURM resource allocation ─────────────────────────────────────────────
+    qos: realtime
+    account: als
+    reservation: ""
     num_nodes: 4
     cpus-per-task: 128
+    walltime: "0:30:00"
+  nersc_multiresolution:
+    # ── SLURM resource allocation ─────────────────────────────────────────────
+    qos: realtime
+    account: als
+    reservation: ""
+    cpus-per-task: 128
+    walltime: "0:15:00"
   nersc_segmentation_sam3:
+    # ── SLURM resource allocation ─────────────────────────────────────────────
+    qos: regular
+    account: als
+    constraint: gpu
     reservation: ""
     num_nodes: 4
     ntasks-per-node: 1
     gpus-per-node: 4
     cpus-per-task: 128
+    walltime: "00:59:00"
+    # ── Inference parameters ──────────────────────────────────────────────────
+    batch_size: 1
+    patch_size: 400
+    confidence:
+    - 0.5
+    overlap: 0.25
+    prompts:
+    - "Phloem Fibers"
+    - "Hydrated Xylem vessels"
+    - "Air-based Pith cells"
+    - "Dehydrated Xylem vessels"
+    # ── Paths ─────────────────────────────────────────────────────────────────
     cfs_path: /global/cfs/cdirs/als/data_mover/8.3.2
     conda_env_path: /global/cfs/cdirs/als/data_mover/8.3.2/envs/sam3-py311
     seg_scripts_dir: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/inference_latest/forge_feb_seg_model_demo/
@@ -177,27 +206,38 @@ hpc_submission_settings832:
     bpe_path: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/sam3_finetune/sam3/bpe_simple_vocab_16e6.txt.gz
     original_checkpoint_path: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/sam3_finetune/sam3/sam3.pt
     finetuned_checkpoint_path: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/sam3_finetune/sam3/checkpoint_v6.pt
-    prompts:
-    - "Phloem Fibers"
-    - "Hydrated Xylem vessels"
-    - "Air-based Pith cells"
-    - "Dehydrated Xylem vessels"
   nersc_segmentation_dino:
+    # ── SLURM resource allocation ─────────────────────────────────────────────
+    qos: regular
+    account: als
+    constraint: gpu
     reservation: ""
     num_nodes: 4
     ntasks-per-node: 1
+    nproc_per_node: 4
     gpus-per-node: 4
     cpus-per-task: 128
+    walltime: "00:59:00"
+    # ── Inference parameters ──────────────────────────────────────────────────
+    batch_size: 4
+    # ── Paths ─────────────────────────────────────────────────────────────────
     cfs_path: /global/cfs/cdirs/als/data_mover/8.3.2
     conda_env_path: /global/cfs/cdirs/als/data_mover/8.3.2/envs/dino_demo
     seg_scripts_dir: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/inference_v5_multiseg/forge_feb_seg_model_demo/
     dino_checkpoint_path: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/dino/best.ckpt
   nersc_combine_segmentations:
+    # ── SLURM resource allocation ─────────────────────────────────────────────
+    qos: regular
+    account: als
+    constraint: cpu
     reservation: ""
     num_nodes: 4
-    ntasks: 1
-    cpus-per-task: 128
+    ntasks: 128
+    cpus-per-task: 1
+    walltime: "01:00:00"
+    # ── Combination parameters ────────────────────────────────────────────────
+    dilate_px: 5
+    # ── Paths ─────────────────────────────────────────────────────────────────
     cfs_path: /global/cfs/cdirs/als/data_mover/8.3.2
     conda_env_path: /global/cfs/cdirs/als/data_mover/8.3.2/envs/dino_demo
     seg_scripts_dir: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/inference_latest/forge_feb_seg_model_demo
-  nersc_account: als

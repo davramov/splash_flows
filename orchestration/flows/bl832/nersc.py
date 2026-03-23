@@ -12,7 +12,7 @@ from prefect import flow, get_run_logger, task
 from prefect.variables import Variable
 from sfapi_client import Client
 from sfapi_client.compute import Machine
-from typing import Optional
+from typing import Any, Optional
 
 from orchestration.flows.bl832.config import Config832
 from orchestration.flows.bl832.job_controller import get_controller, HPC, TomographyHPCController
@@ -26,6 +26,42 @@ from orchestration.prefect import schedule_prefect_flow
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 load_dotenv()
+
+
+def _load_job_options(variable_name: str, config_settings: dict[str, Any]) -> dict[str, Any]:
+    """
+    Load job options, using config as defaults and a Prefect Variable as overrides.
+
+    Resolution order:
+
+    1. Load the named Prefect Variable.
+    2. If absent, malformed, or ``defaults: true`` → return ``config_settings`` unchanged.
+    3. If ``defaults: false`` → return ``config_settings`` with variable values overlaid.
+
+    The config YAML is the authoritative source for all default values. The Prefect
+    Variable only needs to contain the keys it wishes to override, and may introduce
+    keys not present in config (e.g. a bare ``checkpoint`` filename for SAM3).
+
+    :param variable_name: Name of the Prefect Variable to load.
+    :param config_settings: Settings dict read directly from the Config832 object
+        (e.g. ``config.nersc_recon_settings``). Used as-is when defaults=True.
+    :return: Resolved options dict ready for use by the caller.
+    """
+    try:
+        options = Variable.get(variable_name, default={"defaults": True}, _sync=True)
+        if isinstance(options, str):
+            options = json.loads(options)
+    except Exception as e:
+        logger.warning(f"Could not load '{variable_name}': {e}. Using config defaults.")
+        return dict(config_settings)
+
+    if options.get("defaults", True):
+        logger.info(f"Using config defaults for '{variable_name}'")
+        return dict(config_settings)
+
+    logger.info(f"Overriding config defaults with variable options for '{variable_name}'")
+    overrides = {k: v for k, v in options.items() if k != "defaults"}
+    return {**config_settings, **overrides}
 
 
 class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin):
@@ -117,15 +153,27 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
         logger.info(f"Folder name: {folder_name}")
         logger.info(f"Number of nodes: {num_nodes}")
 
-        if num_nodes == 8:
-            qos = "debug"
-        elif num_nodes < 8:
-            qos = "realtime"
-        elif num_nodes > 8:
-            qos = "premium"
+        # if num_nodes == 8:
+        #     qos = "debug"
+        # elif num_nodes < 8:
+        #     qos = "realtime"
+        # elif num_nodes > 8:
+        #     qos = "premium"
 
-        account = self.config.nersc_account
-        cpus_per_task = self.config.nersc_recon_settings.get("cpus-per-task", 128)
+        # account = self.config.nersc_account
+        # cpus_per_task = self.config.nersc_recon_settings.get("cpus-per-task", 128)
+
+        opts = _load_job_options("nersc-reconstruction-options", self.config.nersc_recon_settings)
+
+        num_nodes = opts.get("num_nodes", num_nodes)
+        cpus_per_task = opts["cpus-per-task"]
+        qos = opts["qos"]
+        account = opts["account"]
+        reservation = opts.get("reservation", "")
+        walltime = opts.get("walltime", "0:30:00")
+
+        reservation_line = f"#SBATCH --reservation={reservation}" if reservation else ""
+
 
 # If using with a reservation:
 # SBATCH -q regular
@@ -135,6 +183,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
         job_script = f"""#!/bin/bash
 #SBATCH -q {qos}
 #SBATCH -A {account}
+{reservation_line}
 #SBATCH -C cpu
 #SBATCH --job-name=tomo_recon_{folder_name}_{file_name}
 #SBATCH --output={pscratch_path}/tomo_recon_logs/%x_%j.out
@@ -142,7 +191,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
 #SBATCH -N {num_nodes}
 #SBATCH --ntasks={num_nodes}
 #SBATCH --cpus-per-task={cpus_per_task}
-#SBATCH --time=0:30:00
+#SBATCH --time={walltime}
 #SBATCH --exclusive
 #SBATCH --image={recon_image}
 
@@ -396,20 +445,33 @@ echo "JOB_END=$(date +%s)" >> $TIMING_FILE
         raw_path = f"raw/{folder_name}/{file_name}.h5"
         logger.info(f"{raw_path=}")
 
-        account = self.config.nersc_account
+        # account = self.config.nersc_account
+
+        opts = _load_job_options(
+            "nersc-multiresolution-options", self.config.nersc_multiresolution_settings
+        )
+
+        qos = opts["qos"]
+        account = opts["account"]
+        cpus_per_task = opts["cpus-per-task"]
+        reservation = opts.get("reservation", "")
+        walltime = opts.get("walltime", "0:15:00")
+
+        reservation_line = f"#SBATCH --reservation={reservation}" if reservation else ""
 
         # IMPORTANT: job script must be deindented to the leftmost column or it will fail immediately
         job_script = f"""#!/bin/bash
-#SBATCH -q realtime
+#SBATCH -q {qos}
 #SBATCH -A {account}
+{reservation_line}
 #SBATCH -C cpu
 #SBATCH --job-name=tomo_multires_{folder_name}_{file_name}
 #SBATCH --output={pscratch_path}/tomo_recon_logs/%x_%j.out
 #SBATCH --error={pscratch_path}/tomo_recon_logs/%x_%j.err
 #SBATCH -N 1
 #SBATCH --ntasks-per-node 1
-#SBATCH --cpus-per-task 128
-#SBATCH --time=0:15:00
+#SBATCH --cpus-per-task {cpus_per_task}
+#SBATCH --time={walltime}
 #SBATCH --exclusive
 
 date
@@ -475,23 +537,41 @@ date
         user = self.client.user()
         pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
 
-        sam3_settings = self.config.nersc_segment_sam3_settings
-        cfs_path = sam3_settings["cfs_path"]
-        conda_env_path = sam3_settings["conda_env_path"]
-        seg_scripts_dir = sam3_settings["seg_scripts_dir"]
-        checkpoints_dir = sam3_settings["checkpoints_dir"]
-        bpe_path = sam3_settings["bpe_path"]
-        original_checkpoint = sam3_settings["original_checkpoint_path"]
-        finetuned_checkpoint = sam3_settings["finetuned_checkpoint_path"]
+        opts = _load_job_options("nersc-segmentation-options", self.config.nersc_segment_sam3_settings)
 
-        ntasks_per_node = sam3_settings["ntasks-per-node"]
-        gpus_per_node = sam3_settings["gpus-per-node"]
-        cpus_per_task = sam3_settings["cpus-per-task"]
+        cfs_path = opts["cfs_path"]
+        conda_env_path = opts["conda_env_path"]
+        seg_scripts_dir = opts["seg_scripts_dir"]
+        checkpoints_dir = opts["checkpoints_dir"]
+        bpe_path = opts["bpe_path"]
+        original_checkpoint = opts["original_checkpoint_path"]
+        ntasks_per_node = opts["ntasks-per-node"]
+        gpus_per_node = opts["gpus-per-node"]
+        cpus_per_task = opts["cpus-per-task"]
+        num_nodes = opts.get("num_nodes", num_nodes)
+        batch_size = opts["batch_size"]
+        patch_size = opts["patch_size"]
+        confidence = opts["confidence"]
+        overlap = opts["overlap"]
+        qos = opts["qos"]
+        account = opts["account"]
+        constraint = opts["constraint"]
+        walltime = opts.get("walltime", "00:59:00")
+        reservation = opts.get("reservation", "")
 
-        prompts = sam3_settings["prompts"]
+        prompts = opts["prompts"]
         if not isinstance(prompts, list) or not prompts:
             raise ValueError("nersc_segmentation_sam3.prompts must be a non-empty list")
         prompts_str = " ".join(f"'{p}'" for p in prompts)
+
+        # "checkpoint" in the Prefect Variable is a bare filename that overrides
+        # the config's finetuned_checkpoint_path. Config supplies the full path
+        # as the default, so path construction is only needed when the variable
+        # explicitly provides a different checkpoint filename.
+        if "checkpoint" in opts and opts["checkpoint"] != Path(opts["finetuned_checkpoint_path"]).name:
+            finetuned_checkpoint = f"{checkpoints_dir}/{opts['checkpoint']}"
+        else:
+            finetuned_checkpoint = opts["finetuned_checkpoint_path"]
 
         input_dir = f"{pscratch_path}/8.3.2/scratch/{recon_folder_path}"
         output_folder = recon_folder_path.replace('/rec', '/seg')
@@ -501,63 +581,96 @@ date
         logger.info(f"Output directory: {output_dir}")
         logger.info(f"Conda environment: {conda_env_path}")
 
-        # Default values (used when defaults=True or variable not found)
-        default_batch_size = 1
-        default_patch_size = 400
-        default_confidence = [0.5]
-        default_overlap = 0.25
-        default_qos = "regular"
-        default_account = self.config.nersc_account
-        default_constraint = "gpu"
-        default_checkpoint = finetuned_checkpoint
-        default_reservation = ""
-
-        # Load options from Prefect variable
-        try:
-            seg_options = Variable.get("nersc-segmentation-options", default={})
-            if isinstance(seg_options, str):
-                import json
-                seg_options = json.loads(seg_options)
-        except Exception as e:
-            logger.warning(f"Could not load nersc-segmentation-options variable: {e}. Using defaults.")
-            seg_options = {"defaults": True}
-
-        # Determine which values to use
-        use_defaults = seg_options.get("defaults", True)
-
-        if use_defaults:
-            logger.info("Using hardcoded default segmentation parameters")
-            batch_size = default_batch_size
-            patch_size = default_patch_size
-            confidence = default_confidence
-            overlap = default_overlap
-            qos = default_qos
-            account = default_account
-            constraint = default_constraint
-            finetuned_checkpoint = default_checkpoint
-            reservation = default_reservation
-        else:
-            logger.info("Using parameters from nersc-segmentation-options variable")
-            batch_size = seg_options.get("batch_size", default_batch_size)
-            patch_size = seg_options.get("patch_size", default_patch_size)
-            confidence = seg_options.get("confidence", default_confidence)
-            overlap = seg_options.get("overlap", default_overlap)
-            qos = seg_options.get("qos", default_qos)
-            account = seg_options.get("account", default_account)
-            constraint = seg_options.get("constraint", default_constraint)
-            checkpoint = seg_options.get("checkpoint", default_checkpoint)
-            finetuned_checkpoint = f"{checkpoints_dir}/{checkpoint}"
-            reservation = seg_options.get("reservation", default_reservation)
-
-        # #SBATCH --reservation=_CAP_MarchModCon_GPU
+        confidence_str = (
+            " ".join(str(c) for c in confidence)
+            if isinstance(confidence, list) else str(confidence)
+        )
         reservation_line = f"#SBATCH --reservation={reservation}" if reservation else ""
-        # Format confidence for command line (handles both single value and list)
-        if isinstance(confidence, list):
-            confidence_str = " ".join(str(c) for c in confidence)
-        else:
-            confidence_str = str(confidence)
-        walltime = "00:59:00"
         job_name = f"seg_{Path(recon_folder_path).name}"
+
+        # sam3_settings = self.config.nersc_segment_sam3_settings
+        # cfs_path = sam3_settings["cfs_path"]
+        # conda_env_path = sam3_settings["conda_env_path"]
+        # seg_scripts_dir = sam3_settings["seg_scripts_dir"]
+        # checkpoints_dir = sam3_settings["checkpoints_dir"]
+        # bpe_path = sam3_settings["bpe_path"]
+        # original_checkpoint = sam3_settings["original_checkpoint_path"]
+        # finetuned_checkpoint = sam3_settings["finetuned_checkpoint_path"]
+
+        # ntasks_per_node = sam3_settings["ntasks-per-node"]
+        # gpus_per_node = sam3_settings["gpus-per-node"]
+        # cpus_per_task = sam3_settings["cpus-per-task"]
+
+        # prompts = sam3_settings["prompts"]
+        # if not isinstance(prompts, list) or not prompts:
+        #     raise ValueError("nersc_segmentation_sam3.prompts must be a non-empty list")
+        # prompts_str = " ".join(f"'{p}'" for p in prompts)
+
+        # input_dir = f"{pscratch_path}/8.3.2/scratch/{recon_folder_path}"
+        # output_folder = recon_folder_path.replace('/rec', '/seg')
+        # output_dir = f"{pscratch_path}/8.3.2/scratch/{output_folder}/sam3"
+
+        # logger.info(f"Input directory: {input_dir}")
+        # logger.info(f"Output directory: {output_dir}")
+        # logger.info(f"Conda environment: {conda_env_path}")
+
+        # # Default values (used when defaults=True or variable not found)
+        # default_batch_size = 1
+        # default_patch_size = 400
+        # default_confidence = [0.5]
+        # default_overlap = 0.25
+        # default_qos = "regular"
+        # default_account = self.config.nersc_account
+        # default_constraint = "gpu"
+        # default_checkpoint = finetuned_checkpoint
+        # default_reservation = ""
+
+        # # Load options from Prefect variable
+        # try:
+        #     seg_options = Variable.get("nersc-segmentation-options", default={})
+        #     if isinstance(seg_options, str):
+        #         import json
+        #         seg_options = json.loads(seg_options)
+        # except Exception as e:
+        #     logger.warning(f"Could not load nersc-segmentation-options variable: {e}. Using defaults.")
+        #     seg_options = {"defaults": True}
+
+        # # Determine which values to use
+        # use_defaults = seg_options.get("defaults", True)
+
+        # if use_defaults:
+        #     logger.info("Using hardcoded default segmentation parameters")
+        #     batch_size = default_batch_size
+        #     patch_size = default_patch_size
+        #     confidence = default_confidence
+        #     overlap = default_overlap
+        #     qos = default_qos
+        #     account = default_account
+        #     constraint = default_constraint
+        #     finetuned_checkpoint = default_checkpoint
+        #     reservation = default_reservation
+        # else:
+        #     logger.info("Using parameters from nersc-segmentation-options variable")
+        #     batch_size = seg_options.get("batch_size", default_batch_size)
+        #     patch_size = seg_options.get("patch_size", default_patch_size)
+        #     confidence = seg_options.get("confidence", default_confidence)
+        #     overlap = seg_options.get("overlap", default_overlap)
+        #     qos = seg_options.get("qos", default_qos)
+        #     account = seg_options.get("account", default_account)
+        #     constraint = seg_options.get("constraint", default_constraint)
+        #     checkpoint = seg_options.get("checkpoint", default_checkpoint)
+        #     finetuned_checkpoint = f"{checkpoints_dir}/{checkpoint}"
+        #     reservation = seg_options.get("reservation", default_reservation)
+
+        # # #SBATCH --reservation=_CAP_MarchModCon_GPU
+        # reservation_line = f"#SBATCH --reservation={reservation}" if reservation else ""
+        # # Format confidence for command line (handles both single value and list)
+        # if isinstance(confidence, list):
+        #     confidence_str = " ".join(str(c) for c in confidence)
+        # else:
+        #     confidence_str = str(confidence)
+        # walltime = "00:59:00"
+        # job_name = f"seg_{Path(recon_folder_path).name}"
         job_script = f"""#!/bin/bash
 #SBATCH -q {qos}
 #SBATCH -A {account}
@@ -785,15 +898,24 @@ exit $SEG_STATUS
         pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
 
         # Load from config
-        dino_settings = self.config.nersc_segment_dino_settings
-        cfs_path = dino_settings["cfs_path"]
-        conda_env_path = dino_settings["conda_env_path"]
-        seg_scripts_dir = dino_settings["seg_scripts_dir"]
-        dino_checkpoint = dino_settings["dino_checkpoint_path"]
-        cpus_per_task = dino_settings["cpus-per-task"]
-        gpus_per_node = dino_settings["gpus-per-node"]
-        ntasks_per_node = dino_settings["ntasks-per-node"]
-        reservation = dino_settings.get("reservation", "")
+
+        opts = _load_job_options("nersc-dino-seg-options", self.config.nersc_segment_dino_settings)
+
+        cfs_path = opts["cfs_path"]
+        conda_env_path = opts["conda_env_path"]
+        seg_scripts_dir = opts["seg_scripts_dir"]
+        dino_checkpoint = opts["dino_checkpoint_path"]
+        ntasks_per_node = opts["ntasks-per-node"]
+        gpus_per_node = opts["gpus-per-node"]
+        cpus_per_task = opts["cpus-per-task"]
+        batch_size = opts["batch_size"]
+        num_nodes = opts["num_nodes"]
+        nproc_per_node = opts["nproc_per_node"]
+        qos = opts["qos"]
+        account = opts["account"]
+        constraint = opts["constraint"]
+        walltime = opts.get("walltime", "00:59:00")
+        reservation = opts.get("reservation", "")
 
         input_dir = f"{pscratch_path}/8.3.2/scratch/{recon_folder_path}"
         seg_folder = recon_folder_path.replace("/rec", "/seg")
@@ -802,41 +924,61 @@ exit $SEG_STATUS
         logger.info(f"DINO input dir:  {input_dir}")
         logger.info(f"DINO output dir: {output_dir}")
 
-        DINO_DEFAULTS = {
-            "defaults": True,
-            "batch_size": 4,
-            "num_nodes": 4,
-            "nproc_per_node": 4,
-            "qos": "regular",
-            "account": self.config.nersc_account,  # amsc006
-            "constraint": "gpu",  # "gpu&hbm80g",
-            "reservation": reservation,  # e.g. "_CAP_MarchModCon_GPU"
-            "walltime": "00:59:00",
-        }
-        try:
-            seg_options = Variable.get("nersc-dino-seg-options", default={"defaults": True}, _sync=True)
-            if isinstance(seg_options, str):
-                import json
-                seg_options = json.loads(seg_options)
-        except Exception as e:
-            logger.warning(f"Could not load nersc-dino-seg-options: {e}. Using defaults.")
-            seg_options = {"defaults": True}
-
-        use_defaults = seg_options.get("defaults", True)
-        opts = DINO_DEFAULTS if use_defaults else {k: seg_options.get(k, v) for k, v in DINO_DEFAULTS.items()}
-
-        batch_size = opts["batch_size"]
-        num_nodes = opts["num_nodes"]
-        nproc_per_node = opts["nproc_per_node"]
-        qos = opts["qos"]
-        account = opts["account"]
-        constraint = opts["constraint"]
-        walltime = opts["walltime"]
-
-        reservation = opts.get("reservation", "")
         reservation_line = f"#SBATCH --reservation={reservation}" if reservation else ""
-
         job_name = f"dino_{Path(recon_folder_path).name}"
+
+        # dino_settings = self.config.nersc_segment_dino_settings
+        # cfs_path = dino_settings["cfs_path"]
+        # conda_env_path = dino_settings["conda_env_path"]
+        # seg_scripts_dir = dino_settings["seg_scripts_dir"]
+        # dino_checkpoint = dino_settings["dino_checkpoint_path"]
+        # cpus_per_task = dino_settings["cpus-per-task"]
+        # gpus_per_node = dino_settings["gpus-per-node"]
+        # ntasks_per_node = dino_settings["ntasks-per-node"]
+        # reservation = dino_settings.get("reservation", "")
+
+        # input_dir = f"{pscratch_path}/8.3.2/scratch/{recon_folder_path}"
+        # seg_folder = recon_folder_path.replace("/rec", "/seg")
+        # output_dir = f"{pscratch_path}/8.3.2/scratch/{seg_folder}/dino"
+
+        # logger.info(f"DINO input dir:  {input_dir}")
+        # logger.info(f"DINO output dir: {output_dir}")
+
+        # DINO_DEFAULTS = {
+        #     "defaults": True,
+        #     "batch_size": 4,
+        #     "num_nodes": 4,
+        #     "nproc_per_node": 4,
+        #     "qos": "regular",
+        #     "account": self.config.nersc_account,  # amsc006
+        #     "constraint": "gpu",  # "gpu&hbm80g",
+        #     "reservation": reservation,  # e.g. "_CAP_MarchModCon_GPU"
+        #     "walltime": "00:59:00",
+        # }
+        # try:
+        #     seg_options = Variable.get("nersc-dino-seg-options", default={"defaults": True}, _sync=True)
+        #     if isinstance(seg_options, str):
+        #         import json
+        #         seg_options = json.loads(seg_options)
+        # except Exception as e:
+        #     logger.warning(f"Could not load nersc-dino-seg-options: {e}. Using defaults.")
+        #     seg_options = {"defaults": True}
+
+        # use_defaults = seg_options.get("defaults", True)
+        # opts = DINO_DEFAULTS if use_defaults else {k: seg_options.get(k, v) for k, v in DINO_DEFAULTS.items()}
+
+        # batch_size = opts["batch_size"]
+        # num_nodes = opts["num_nodes"]
+        # nproc_per_node = opts["nproc_per_node"]
+        # qos = opts["qos"]
+        # account = opts["account"]
+        # constraint = opts["constraint"]
+        # walltime = opts["walltime"]
+
+        # reservation = opts.get("reservation", "")
+        # reservation_line = f"#SBATCH --reservation={reservation}" if reservation else ""
+
+        # job_name = f"dino_{Path(recon_folder_path).name}"
         job_script = f"""#!/bin/bash
 #SBATCH -q {qos}
 #SBATCH -A {account}
@@ -979,9 +1121,19 @@ exit $SEG_STATUS
         user = self.client.user()
         pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
 
-        combine_settings = self.config.nersc_combine_segmentation_settings
-        conda_env_path = combine_settings["conda_env_path"]
-        seg_scripts_dir = combine_settings["seg_scripts_dir"]
+        opts = _load_job_options(
+            "nersc-combine-seg-options", self.config.nersc_combine_segmentation_settings
+        )
+
+        conda_env_path = opts["conda_env_path"]
+        seg_scripts_dir = opts["seg_scripts_dir"]
+        num_nodes = opts["num_nodes"]
+        qos = opts["qos"]
+        account = opts["account"]
+        constraint = opts["constraint"]
+        walltime = opts.get("walltime", "01:00:00")
+        dilate_px = opts["dilate_px"]
+        reservation = opts.get("reservation", "")
 
         seg_folder = recon_folder_path.replace("/rec", "/seg")
         input_dir = f"{pscratch_path}/8.3.2/scratch/{recon_folder_path}"
@@ -994,39 +1146,57 @@ exit $SEG_STATUS
         logger.info(f"Combine input dir:  {input_dir}")
         logger.info(f"Combine output dir: {combined_output}")
 
-        COMBINE_DEFAULTS = {
-            "defaults": True,
-            "num_nodes": combine_settings["num_nodes"],
-            "qos": "regular",
-            "account": self.config.nersc_account,  # "amsc006",
-            "constraint": "cpu",
-            "walltime": "01:00:00",
-            "dilate_px": 5,
-            "reservation": combine_settings["reservation"]
-        }
-        try:
-            seg_options = Variable.get("nersc-combine-seg-options", default={"defaults": True}, _sync=True)
-            if isinstance(seg_options, str):
-                import json
-                seg_options = json.loads(seg_options)
-        except Exception as e:
-            logger.warning(f"Could not load nersc-combine-seg-options: {e}. Using defaults.")
-            seg_options = {"defaults": True}
-
-        use_defaults = seg_options.get("defaults", True)
-        opts = COMBINE_DEFAULTS if use_defaults else {k: seg_options.get(k, v) for k, v in COMBINE_DEFAULTS.items()}
-
-        num_nodes = opts["num_nodes"]
-        qos = opts["qos"]
-        account = opts["account"]
-        constraint = opts["constraint"]
-        walltime = opts["walltime"]
-        dilate_px = opts["dilate_px"]
-        reservation = opts["reservation"]
-
         reservation_line = f"#SBATCH --reservation={reservation}" if reservation else ""
-
         job_name = f"combine_{Path(recon_folder_path).name}"
+
+        # combine_settings = self.config.nersc_combine_segmentation_settings
+        # conda_env_path = combine_settings["conda_env_path"]
+        # seg_scripts_dir = combine_settings["seg_scripts_dir"]
+
+        # seg_folder = recon_folder_path.replace("/rec", "/seg")
+        # input_dir = f"{pscratch_path}/8.3.2/scratch/{recon_folder_path}"
+        # seg_base = f"{pscratch_path}/8.3.2/scratch/{seg_folder}"
+
+        # sam3_results = f"{seg_base}/sam3"
+        # dino_results = f"{seg_base}/dino"
+        # combined_output = f"{seg_base}/combined"
+
+        # logger.info(f"Combine input dir:  {input_dir}")
+        # logger.info(f"Combine output dir: {combined_output}")
+
+        # COMBINE_DEFAULTS = {
+        #     "defaults": True,
+        #     "num_nodes": combine_settings["num_nodes"],
+        #     "qos": "regular",
+        #     "account": self.config.nersc_account,  # "amsc006",
+        #     "constraint": "cpu",
+        #     "walltime": "01:00:00",
+        #     "dilate_px": 5,
+        #     "reservation": combine_settings["reservation"]
+        # }
+        # try:
+        #     seg_options = Variable.get("nersc-combine-seg-options", default={"defaults": True}, _sync=True)
+        #     if isinstance(seg_options, str):
+        #         import json
+        #         seg_options = json.loads(seg_options)
+        # except Exception as e:
+        #     logger.warning(f"Could not load nersc-combine-seg-options: {e}. Using defaults.")
+        #     seg_options = {"defaults": True}
+
+        # use_defaults = seg_options.get("defaults", True)
+        # opts = COMBINE_DEFAULTS if use_defaults else {k: seg_options.get(k, v) for k, v in COMBINE_DEFAULTS.items()}
+
+        # num_nodes = opts["num_nodes"]
+        # qos = opts["qos"]
+        # account = opts["account"]
+        # constraint = opts["constraint"]
+        # walltime = opts["walltime"]
+        # dilate_px = opts["dilate_px"]
+        # reservation = opts["reservation"]
+
+        # reservation_line = f"#SBATCH --reservation={reservation}" if reservation else ""
+
+        # job_name = f"combine_{Path(recon_folder_path).name}"
 
 # #SBATCH --reservation=_CAP_MarchModCon_CPU
         job_script = f"""#!/bin/bash
@@ -1037,8 +1207,8 @@ exit $SEG_STATUS
 #SBATCH -C {constraint}
 #SBATCH --job-name={job_name}
 #SBATCH --time={walltime}
-#SBATCH --ntasks={combine_settings["ntasks"]}
-#SBATCH --cpus-per-task={combine_settings["cpus-per-task"]}
+#SBATCH --ntasks={opts["ntasks"]}
+#SBATCH --cpus-per-task={opts["cpus-per-task"]}
 #SBATCH --output={pscratch_path}/tomo_seg_logs/%x_%j.out
 #SBATCH --error={pscratch_path}/tomo_seg_logs/%x_%j.err
 
