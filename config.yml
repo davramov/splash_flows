@@ -188,6 +188,7 @@ hpc_submission_settings832:
     cpus-per-task: 128
     walltime: "00:59:00"
     # ── Inference parameters ──────────────────────────────────────────────────
+    script_name: "src/inference_v6.py"
     batch_size: 1
     patch_size: 400
     confidence:
@@ -219,6 +220,7 @@ hpc_submission_settings832:
     cpus-per-task: 128
     walltime: "00:59:00"
     # ── Inference parameters ──────────────────────────────────────────────────
+    script_name: "src.inference_dino_v1"
     batch_size: 4
     # ── Paths ─────────────────────────────────────────────────────────────────
     cfs_path: /global/cfs/cdirs/als/data_mover/8.3.2
@@ -236,6 +238,7 @@ hpc_submission_settings832:
     cpus-per-task: 1
     walltime: "01:00:00"
     # ── Combination parameters ────────────────────────────────────────────────
+    script_name: "src.combine_sam_dino_v3"
     dilate_px: 5
     # ── Paths ─────────────────────────────────────────────────────────────────
     cfs_path: /global/cfs/cdirs/als/data_mover/8.3.2

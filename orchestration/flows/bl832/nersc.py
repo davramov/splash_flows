@@ -548,6 +548,7 @@ date
         constraint = opts["constraint"]
         walltime = opts.get("walltime", "00:59:00")
         reservation = opts.get("reservation", "")
+        script_name = opts.get("script_name", "src/inference_v6.py")
 
         prompts = opts["prompts"]
         if not isinstance(prompts, list) or not prompts:
@@ -646,7 +647,7 @@ START_TIME=$(date +%s)
 # Change to script directory
 cd {seg_scripts_dir}
 
-# Run inference with v6
+# Run inference
 export TORCH_DISTRIBUTED_DEBUG=DETAIL
 export NCCL_DEBUG=INFO
 export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
@@ -661,7 +662,7 @@ srun --ntasks-per-node=1 --gpus-per-task=4 \
     --rdzv_id=$SLURM_JOB_ID \
     --rdzv_backend=c10d \
     --rdzv_endpoint=$MASTER_ADDR:$MASTER_PORT \
-    src/inference_v6.py \
+    {script_name} \
     --input-dir "${{INPUT_DIR}}" \
     --output-dir "${{OUTPUT_DIR}}" \
     --patch-size {patch_size} \
@@ -823,6 +824,7 @@ exit $SEG_STATUS
         constraint = opts["constraint"]
         walltime = opts.get("walltime", "00:59:00")
         reservation = opts.get("reservation", "")
+        script_name = opts.get("script_name", "src.inference_dino_v1")
 
         input_dir = f"{pscratch_path}/8.3.2/scratch/{recon_folder_path}"
         seg_folder = recon_folder_path.replace("/rec", "/seg")
@@ -896,7 +898,7 @@ srun --ntasks-per-node=1 --gpus-per-task=4 \\
     --rdzv_id=$SLURM_JOB_ID \\
     --rdzv_backend=c10d \\
     --rdzv_endpoint=$MASTER_ADDR:$MASTER_PORT \\
-    -m src.inference_dino_v1 \\
+    -m {script_name} \\
     --input-dir "{input_dir}" \\
     --output-dir "{output_dir}" \\
     --batch-size {batch_size} \\
@@ -989,6 +991,7 @@ exit $SEG_STATUS
         walltime = opts.get("walltime", "01:00:00")
         dilate_px = opts["dilate_px"]
         reservation = opts.get("reservation", "")
+        script_name = opts.get("script_name", "src.combine_sam_dino_v3")
 
         seg_folder = recon_folder_path.replace("/rec", "/seg")
         input_dir = f"{pscratch_path}/8.3.2/scratch/{recon_folder_path}"
@@ -1038,7 +1041,7 @@ START_TIME=$(date +%s)
 cd {seg_scripts_dir}
 
 echo "--- Running SAM3 + DINO combination (v3) ---"
-python -m src.combine_sam_dino_v3 \\
+python -m {script_name} \\
     --input-dir "{input_dir}" \\
     --instance-masks-dir "{sam3_results}" \\
     --semantic-masks-dir "{dino_results}/semantic_masks" \\
