@@ -393,6 +393,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
                         sbatch_values["reservation"] = line.split("--reservation=")[-1].strip()
 
             # Strip shebang and SBATCH headers, keep the script body
+
             script_body = "\n".join(
                 line for line in job_script.splitlines()
                 if not line.startswith("#SBATCH") and not line.startswith("#!/")
