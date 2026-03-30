@@ -20,7 +20,11 @@ from orchestration.flows.bl832.job_controller import get_controller, HPC, NERSCL
 from orchestration.flows.bl832.streaming_mixin import (
     NerscStreamingMixin, SlurmJobBlock, cancellation_hook, monitor_streaming_job, save_block
 )
-from orchestration.globus.token import get_access_token_confidential, DEFAULT_TOKEN_FILE
+from orchestration.globus.token import (
+    get_access_token,
+    DEFAULT_TOKEN_FILE,
+    IRI_SCOPE,
+)
 from orchestration.prefect import schedule_prefect_flow
 from orchestration.prune_controller import get_prune_controller, PruneMethod
 from orchestration.transfer_controller import get_transfer_controller, CopyMethod
@@ -32,7 +36,9 @@ load_dotenv()
 
 # Applies only to NERSCLoginMethod.IRIAPI
 _IRIAPI_GLOBUS_CLIENT_ID_ENV: str = "GLOBUS_CLIENT_ID"
-_IRIAPI_GLOBUS_CLIENT_SECRET_ENV: str = "GLOBUS_CLIENT_SECRET"  # set → confidential client
+_IRI_COMPUTE_RESOURCE: str = "compute"
+_IRI_SCRATCH_RESOURCE: str = "scratch"
+# _IRIAPI_GLOBUS_CLIENT_SECRET_ENV: str = "GLOBUS_CLIENT_SECRET"  # set → confidential client
 _IRIAPI_TOKEN_FILE_ENV: str = "PATH_GLOBUS_TOKEN_FILE"
 _IRIAPI_GLOBUS_RESOURCE_SERVER: str = "auth.globus.org"
 _IRIAPI_GLOBUS_REQUIRED_SCOPES: frozenset[str] = frozenset({
@@ -40,6 +46,7 @@ _IRIAPI_GLOBUS_REQUIRED_SCOPES: frozenset[str] = frozenset({
     "profile",
     "email",
     "urn:globus:auth:scope:auth.globus.org:view_identities",
+    IRI_SCOPE,
 })
 
 _API_BASE_URLS: dict[NERSCLoginMethod, str] = {
@@ -164,33 +171,33 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
             ValueError: If ``GLOBUS_CLIENT_ID`` or ``GLOBUS_CLIENT_SECRET`` are unset.
             RuntimeError: If the acquired token is missing required scopes.
         """
-        client_id = os.getenv(_IRIAPI_GLOBUS_CLIENT_ID_ENV)
-        client_secret = os.getenv(_IRIAPI_GLOBUS_CLIENT_SECRET_ENV)
+        client_id = "fae5c579-490a-4d76-b6eb-d78f65caeb63"  # os.getenv(_IRIAPI_GLOBUS_CLIENT_ID_ENV)
+        # client_secret = os.getenv(_IRIAPI_GLOBUS_CLIENT_SECRET_ENV)
 
         if not client_id:
             raise ValueError(
                 f"Globus client ID is unset. Set {_IRIAPI_GLOBUS_CLIENT_ID_ENV}."
             )
-        if not client_secret:
-            raise ValueError(
-                f"Globus client secret is unset. Set {_IRIAPI_GLOBUS_CLIENT_SECRET_ENV}. "
-                "A Globus Confidential App client is required for automated IRI API auth."
-            )
+        # if not client_secret:
+        #     raise ValueError(
+        #         f"Globus client secret is unset. Set {_IRIAPI_GLOBUS_CLIENT_SECRET_ENV}. "
+        #         "A Globus Confidential App client is required for automated IRI API auth."
+        #     )
 
         token_file_env = os.getenv(_IRIAPI_TOKEN_FILE_ENV)
         token_file = Path(token_file_env) if token_file_env else DEFAULT_TOKEN_FILE
 
-        access_token = get_access_token_confidential(
+        access_token = get_access_token(
             client_id=client_id,
-            client_secret=client_secret,
-            required_scopes=_IRIAPI_GLOBUS_REQUIRED_SCOPES,
-            resource_server=_IRIAPI_GLOBUS_RESOURCE_SERVER,
+            requested_scopes=_IRIAPI_GLOBUS_REQUIRED_SCOPES,
             token_file=token_file,
+            force_login=False,
         )
 
         return httpx.Client(
             base_url=_API_BASE_URLS[NERSCLoginMethod.IRIAPI],
             headers={"Authorization": f"Bearer {access_token}"},
+            timeout=httpx.Timeout(connect=10.0, read=60.0, write=10.0, pool=10.0),
         )
 
     @staticmethod
@@ -268,12 +275,39 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
             return str(job.jobid)
 
         elif self.login_method is NERSCLoginMethod.IRIAPI:
+            username = self._get_nersc_username()
+            pscratch_path = f"/pscratch/sd/{username[0]}/{username}"
+
+            script_body = "\n".join(
+                line for line in job_script.splitlines()
+                if not line.startswith("#SBATCH") and not line.startswith("#!/")
+            ).strip()
+
+            job_spec = {
+                "executable": "/bin/bash",
+                "arguments": ["-c", script_body],
+                "stdout_path": f"{pscratch_path}/tomo_recon_logs/iri_job.out",
+                "stderr_path": f"{pscratch_path}/tomo_recon_logs/iri_job.err",
+                "resources": {
+                    "node_count": 1,
+                    "processes_per_node": 1,
+                    "cpu_cores_per_process": 64,
+                    "exclusive_node_use": True,
+                },
+                "attributes": {
+                    "duration": 1800,
+                    "queue_name": "realtime",
+                    "account": "als",
+                    "custom_attributes": {"constraint": "cpu"},
+                },
+            }
+
             response = self.client.post(
-                "/api/v1/compute/job/perlmutter",
-                json={"script": job_script},
+                f"/api/v1/compute/job/{_IRI_COMPUTE_RESOURCE}",
+                json=job_spec,
             )
             response.raise_for_status()
-            return str(response.json()["job_id"])
+            return str(response.json()["id"])
 
         else:
             raise ValueError(f"Unhandled NERSCLoginMethod: {self.login_method}")
@@ -299,13 +333,16 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
         elif self.login_method is NERSCLoginMethod.IRIAPI:
             while True:
                 response = self.client.get(
-                    f"/api/v1/compute/status/perlmutter/{job_id}"
+                    f"/api/v1/compute/status/{_IRI_COMPUTE_RESOURCE}/{job_id}"  # ← was "perlmutter"
                 )
                 response.raise_for_status()
-                state = response.json().get("state")
+                state = response.json().get("status", {}).get("state")
                 logger.info(f"Job {job_id} state: {state}")
-                if state in ("COMPLETED", "FAILED", "CANCELLED", "TIMEOUT"):
-                    return state == "COMPLETED"
+                if state == "completed":
+                    return True
+                if state in ("failed", "canceled", "timeout"):
+                    logger.error(f"Job {job_id} ended with state: {state}")
+                    return False
                 time.sleep(60)
 
         else:
