@@ -73,6 +73,11 @@ LOG_FILE = Path("/tmp/bl832_cleanup.log")
 logger = logging.getLogger(__name__)
 
 
+def _dir_size_mb(path: Path) -> float:
+    """Return the total size of all files under path in megabytes."""
+    return sum(f.stat().st_size for f in path.rglob("*") if f.is_file()) / 1024 / 1024
+
+
 def get_creation_time(path: Path) -> datetime | None:
     """
     Get the creation time of a file or directory as a timezone-aware datetime.
@@ -139,7 +144,8 @@ def prune_zarr_volumes(endpoint: FileSystemEndpoint, cutoff: datetime, config: B
 
         if creation < cutoff:
             if dry_run:
-                logger.info(f"[DRY RUN] Would remove Zarr volume: {zarr_dir} (created {creation.date()})")
+                size_mb = _dir_size_mb(zarr_dir)
+                logger.info(f"[DRY RUN] Would remove Zarr volume: {zarr_dir} ({size_mb:.1f} MB, created {creation.date()})")
             else:
                 logger.info(f"Removing Zarr volume: {zarr_dir} (created {creation.date()})")
                 controller.prune_no_prefect(
@@ -176,7 +182,7 @@ def prune_scratch_endpoint(
 
     controller = FileSystemPruneController(config)
 
-    files_by_dir: dict[Path, list[Path]] = defaultdict(list)
+    files_by_dir: dict[Path, list[tuple[Path, datetime]]] = defaultdict(list)
 
     for file in sorted(scratch_dir.rglob("*")):
         if not file.is_file():
@@ -188,13 +194,21 @@ def prune_scratch_endpoint(
             continue
 
         if creation < cutoff:
-            files_by_dir[file.parent].append(file)
+            files_by_dir[file.parent].append((file, creation))
 
-    for parent_dir, files in sorted(files_by_dir.items()):
+    for parent_dir, entries in sorted(files_by_dir.items()):
+        files = [f for f, _ in entries]
+        oldest = min(c.date() for _, c in entries)
+        newest = max(c.date() for _, c in entries)
+        total_mb = sum(f.stat().st_size for f in files) / 1024 / 1024
         if dry_run:
-            logger.info(f"[DRY RUN] Would remove {len(files)} file(s) from {parent_dir}")
+            total_files = sum(1 for f in parent_dir.rglob("*") if f.is_file())
+            logger.info(
+                f"[DRY RUN] Would remove {len(files)}/{total_files} file(s) ({total_mb:.1f} MB) "
+                f"from {parent_dir} (created {oldest} – {newest})"
+            )
         else:
-            logger.info(f"Removing {len(files)} file(s) from {parent_dir}")
+            logger.info(f"Removing {len(files)} file(s) ({total_mb:.1f} MB) from {parent_dir}")
             for file in files:
                 controller.prune_no_prefect(
                     file_path=str(file.relative_to(scratch_dir)),
