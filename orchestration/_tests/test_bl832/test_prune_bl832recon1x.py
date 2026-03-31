@@ -18,8 +18,8 @@ from orchestration.transfer_endpoints import FileSystemEndpoint
 # ---------------------------------------------------------------------------
 
 CUTOFF = datetime(2025, 1, 1, tzinfo=timezone.utc)
-OLD_CREATION = datetime(2024, 6, 1, tzinfo=timezone.utc)   # before cutoff — should be pruned
-NEW_CREATION = datetime(2025, 6, 1, tzinfo=timezone.utc)   # after cutoff — should be retained
+OLD_CREATION = datetime(2024, 6, 1, tzinfo=timezone.utc)
+NEW_CREATION = datetime(2025, 6, 1, tzinfo=timezone.utc)
 
 MODULE = "orchestration.flows.bl832.prune_bl832recon1x"
 
@@ -71,10 +71,24 @@ def test_get_creation_time_returns_datetime_when_available(mocker) -> None:
     assert result == OLD_CREATION
 
 
+def test_get_creation_time_falls_back_to_ctime(mocker) -> None:
+    """Falls back to st_ctime when st_birthtime is not available."""
+    mock_stat = mocker.MagicMock(spec=["st_ctime"])
+    mock_stat.st_ctime = 0
+    mock_stat.st_ctime = OLD_CREATION.timestamp()
+    mock_path = mocker.MagicMock()
+    mock_path.stat.return_value = mock_stat
+
+    result = get_creation_time(mock_path)
+
+    assert result == OLD_CREATION
+
+
 def test_get_creation_time_returns_none_when_creation_time_is_zero(mocker) -> None:
     """Returns None when st_birthtime is zero (filesystem does not support creation time)."""
     mock_stat = mocker.MagicMock()
-    mock_stat.st_birthtime = 0  # filesystem does not expose creation time
+    mock_stat.st_birthtime = 0
+    mock_stat.st_ctime = 0
     mock_path = mocker.MagicMock()
     mock_path.stat.return_value = mock_stat
 
@@ -85,7 +99,7 @@ def test_get_creation_time_returns_none_when_creation_time_is_zero(mocker) -> No
 
 def test_get_creation_time_returns_none_when_attribute_missing(mocker) -> None:
     """Returns None when creation time attribute is not present on the stat result."""
-    mock_stat = mocker.MagicMock(spec=[])  # no attributes
+    mock_stat = mocker.MagicMock(spec=[])
     mock_path = mocker.MagicMock()
     mock_path.stat.return_value = mock_stat
 
@@ -112,7 +126,7 @@ def test_get_creation_time_returns_none_on_os_error(mocker) -> None:
 def test_prune_zarr_volumes_removes_old_volume(
     sample_endpoint: FileSystemEndpoint, mock_config, mocker
 ) -> None:
-    """Calls controller.prune for Zarr volumes created before the cutoff."""
+    """Calls prune_no_prefect for Zarr volumes created before the cutoff."""
     old_zarr = Path(sample_endpoint.root_path) / "old_scan"
     old_zarr.mkdir()
 
@@ -122,17 +136,16 @@ def test_prune_zarr_volumes_removes_old_volume(
 
     prune_zarr_volumes(sample_endpoint, CUTOFF, mock_config)
 
-    mock_controller.prune.assert_called_once_with(
+    mock_controller.prune_no_prefect.assert_called_once_with(
         file_path="old_scan",
         source_endpoint=sample_endpoint,
-        days_from_now=0,
     )
 
 
 def test_prune_zarr_volumes_retains_new_volume(
     sample_endpoint: FileSystemEndpoint, mock_config, mocker
 ) -> None:
-    """Does not call controller.prune for Zarr volumes created after the cutoff."""
+    """Does not call prune_no_prefect for Zarr volumes created after the cutoff."""
     new_zarr = Path(sample_endpoint.root_path) / "new_scan"
     new_zarr.mkdir()
 
@@ -142,13 +155,13 @@ def test_prune_zarr_volumes_retains_new_volume(
 
     prune_zarr_volumes(sample_endpoint, CUTOFF, mock_config)
 
-    mock_controller.prune.assert_not_called()
+    mock_controller.prune_no_prefect.assert_not_called()
 
 
 def test_prune_zarr_volumes_skips_demo_prefix(
     sample_endpoint: FileSystemEndpoint, mock_config, mocker
 ) -> None:
-    """Does not call controller.prune for directories prefixed with 'demo_'."""
+    """Does not call prune_no_prefect for directories prefixed with 'demo_'."""
     demo_zarr = Path(sample_endpoint.root_path) / "demo_sample"
     demo_zarr.mkdir()
 
@@ -158,13 +171,30 @@ def test_prune_zarr_volumes_skips_demo_prefix(
 
     prune_zarr_volumes(sample_endpoint, CUTOFF, mock_config)
 
-    mock_controller.prune.assert_not_called()
+    mock_controller.prune_no_prefect.assert_not_called()
+
+
+def test_prune_zarr_volumes_dry_run_does_not_delete(
+    sample_endpoint: FileSystemEndpoint, mock_config, mocker
+) -> None:
+    """Does not call prune_no_prefect when dry_run=True."""
+    old_zarr = Path(sample_endpoint.root_path) / "old_scan"
+    old_zarr.mkdir()
+
+    mock_controller = mocker.MagicMock()
+    mocker.patch(f"{MODULE}.FileSystemPruneController", return_value=mock_controller)
+    mocker.patch(f"{MODULE}.get_creation_time", return_value=OLD_CREATION)
+    mocker.patch(f"{MODULE}._dir_size_mb", return_value=100.0)
+
+    prune_zarr_volumes(sample_endpoint, CUTOFF, mock_config, dry_run=True)
+
+    mock_controller.prune_no_prefect.assert_not_called()
 
 
 def test_prune_zarr_volumes_skips_when_creation_time_unavailable(
     sample_endpoint: FileSystemEndpoint, mock_config, mocker
 ) -> None:
-    """Does not call controller.prune when creation time cannot be determined."""
+    """Does not call prune_no_prefect when creation time cannot be determined."""
     zarr = Path(sample_endpoint.root_path) / "unknown_age"
     zarr.mkdir()
 
@@ -174,13 +204,13 @@ def test_prune_zarr_volumes_skips_when_creation_time_unavailable(
 
     prune_zarr_volumes(sample_endpoint, CUTOFF, mock_config)
 
-    mock_controller.prune.assert_not_called()
+    mock_controller.prune_no_prefect.assert_not_called()
 
 
 def test_prune_zarr_volumes_skips_files(
     sample_endpoint: FileSystemEndpoint, mock_config, mocker
 ) -> None:
-    """Does not call controller.prune for loose files in the sample directory."""
+    """Does not call prune_no_prefect for loose files in the sample directory."""
     loose_file = Path(sample_endpoint.root_path) / "stray_file.txt"
     loose_file.touch()
 
@@ -190,7 +220,7 @@ def test_prune_zarr_volumes_skips_files(
 
     prune_zarr_volumes(sample_endpoint, CUTOFF, mock_config)
 
-    mock_controller.prune.assert_not_called()
+    mock_controller.prune_no_prefect.assert_not_called()
 
 
 def test_prune_zarr_volumes_noop_when_directory_missing(mock_config, mocker) -> None:
@@ -205,7 +235,7 @@ def test_prune_zarr_volumes_noop_when_directory_missing(mock_config, mocker) -> 
 
     prune_zarr_volumes(endpoint, CUTOFF, mock_config)
 
-    mock_controller.prune.assert_not_called()
+    mock_controller.prune_no_prefect.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +246,7 @@ def test_prune_zarr_volumes_noop_when_directory_missing(mock_config, mocker) -> 
 def test_prune_scratch_endpoint_removes_old_file(
     scratch_endpoint: FileSystemEndpoint, mock_config, mocker
 ) -> None:
-    """Calls controller.prune for files created before the cutoff."""
+    """Calls prune_no_prefect for files created before the cutoff."""
     old_file = Path(scratch_endpoint.root_path) / "old_result.h5"
     old_file.touch()
 
@@ -226,17 +256,16 @@ def test_prune_scratch_endpoint_removes_old_file(
 
     prune_scratch_endpoint(scratch_endpoint, CUTOFF, mock_config)
 
-    mock_controller.prune.assert_called_once_with(
+    mock_controller.prune_no_prefect.assert_called_once_with(
         file_path="old_result.h5",
         source_endpoint=scratch_endpoint,
-        days_from_now=0,
     )
 
 
 def test_prune_scratch_endpoint_retains_new_file(
     scratch_endpoint: FileSystemEndpoint, mock_config, mocker
 ) -> None:
-    """Does not call controller.prune for files created after the cutoff."""
+    """Does not call prune_no_prefect for files created after the cutoff."""
     new_file = Path(scratch_endpoint.root_path) / "new_result.h5"
     new_file.touch()
 
@@ -246,13 +275,13 @@ def test_prune_scratch_endpoint_retains_new_file(
 
     prune_scratch_endpoint(scratch_endpoint, CUTOFF, mock_config)
 
-    mock_controller.prune.assert_not_called()
+    mock_controller.prune_no_prefect.assert_not_called()
 
 
 def test_prune_scratch_endpoint_recurses_into_subdirectories(
     scratch_endpoint: FileSystemEndpoint, mock_config, mocker
 ) -> None:
-    """Calls controller.prune for old files in nested subdirectories."""
+    """Calls prune_no_prefect for old files in nested subdirectories."""
     nested = Path(scratch_endpoint.root_path) / "subdir" / "nested"
     nested.mkdir(parents=True)
     nested_file = nested / "data.h5"
@@ -264,11 +293,26 @@ def test_prune_scratch_endpoint_recurses_into_subdirectories(
 
     prune_scratch_endpoint(scratch_endpoint, CUTOFF, mock_config)
 
-    mock_controller.prune.assert_called_once_with(
+    mock_controller.prune_no_prefect.assert_called_once_with(
         file_path="subdir/nested/data.h5",
         source_endpoint=scratch_endpoint,
-        days_from_now=0,
     )
+
+
+def test_prune_scratch_endpoint_dry_run_does_not_delete(
+    scratch_endpoint: FileSystemEndpoint, mock_config, mocker
+) -> None:
+    """Does not call prune_no_prefect when dry_run=True."""
+    old_file = Path(scratch_endpoint.root_path) / "old_result.h5"
+    old_file.touch()
+
+    mock_controller = mocker.MagicMock()
+    mocker.patch(f"{MODULE}.FileSystemPruneController", return_value=mock_controller)
+    mocker.patch(f"{MODULE}.get_creation_time", return_value=OLD_CREATION)
+
+    prune_scratch_endpoint(scratch_endpoint, CUTOFF, mock_config, dry_run=True)
+
+    mock_controller.prune_no_prefect.assert_not_called()
 
 
 def test_prune_scratch_endpoint_removes_empty_directories_after_pruning(
@@ -280,13 +324,12 @@ def test_prune_scratch_endpoint_removes_empty_directories_after_pruning(
     old_file = subdir / "old.h5"
     old_file.touch()
 
-    # Simulate the controller actually deleting the file so the sweep has something to act on
     def fake_prune(**kwargs: object) -> bool:
         Path(scratch_endpoint.root_path, kwargs["file_path"]).unlink(missing_ok=True)
         return True
 
     mock_controller = mocker.MagicMock()
-    mock_controller.prune.side_effect = fake_prune
+    mock_controller.prune_no_prefect.side_effect = fake_prune
     mocker.patch(f"{MODULE}.FileSystemPruneController", return_value=mock_controller)
     mocker.patch(f"{MODULE}.get_creation_time", return_value=OLD_CREATION)
 
@@ -295,10 +338,26 @@ def test_prune_scratch_endpoint_removes_empty_directories_after_pruning(
     assert not subdir.exists()
 
 
+def test_prune_scratch_endpoint_dry_run_does_not_remove_empty_directories(
+    scratch_endpoint: FileSystemEndpoint, mock_config, mocker
+) -> None:
+    """Does not sweep empty directories when dry_run=True."""
+    subdir = Path(scratch_endpoint.root_path) / "subdir"
+    subdir.mkdir()
+
+    mock_controller = mocker.MagicMock()
+    mocker.patch(f"{MODULE}.FileSystemPruneController", return_value=mock_controller)
+    mocker.patch(f"{MODULE}.get_creation_time", return_value=OLD_CREATION)
+
+    prune_scratch_endpoint(scratch_endpoint, CUTOFF, mock_config, dry_run=True)
+
+    assert subdir.exists()
+
+
 def test_prune_scratch_endpoint_skips_when_creation_time_unavailable(
     scratch_endpoint: FileSystemEndpoint, mock_config, mocker
 ) -> None:
-    """Does not call controller.prune when creation time cannot be determined."""
+    """Does not call prune_no_prefect when creation time cannot be determined."""
     f = Path(scratch_endpoint.root_path) / "unknown.h5"
     f.touch()
 
@@ -308,7 +367,7 @@ def test_prune_scratch_endpoint_skips_when_creation_time_unavailable(
 
     prune_scratch_endpoint(scratch_endpoint, CUTOFF, mock_config)
 
-    mock_controller.prune.assert_not_called()
+    mock_controller.prune_no_prefect.assert_not_called()
 
 
 def test_prune_scratch_endpoint_noop_when_directory_missing(mock_config, mocker) -> None:
@@ -323,7 +382,7 @@ def test_prune_scratch_endpoint_noop_when_directory_missing(mock_config, mocker)
 
     prune_scratch_endpoint(endpoint, CUTOFF, mock_config)
 
-    mock_controller.prune.assert_not_called()
+    mock_controller.prune_no_prefect.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -354,5 +413,4 @@ def test_prune_docker_logs_on_failure(mocker) -> None:
         side_effect=subprocess.CalledProcessError(1, "docker", stderr="daemon not running"),
     )
 
-    # Should not raise
     prune_docker()

@@ -94,7 +94,7 @@ def get_creation_time(path: Path) -> datetime | None:
         # st_ctime = inode change time on Linux; reflects when file arrived on
         # this filesystem regardless of source mtime. st_birthtime preferred if
         # available (Ubuntu 24.04+ with ext4), but st_ctime is a reliable fallback.
-        ts = getattr(stat, "st_birthtime", None) or stat.st_ctime
+        ts = getattr(stat, "st_birthtime", None) or getattr(stat, "st_ctime", None)
         if not ts:
             return None
         return datetime.fromtimestamp(ts, tz=timezone.utc)
