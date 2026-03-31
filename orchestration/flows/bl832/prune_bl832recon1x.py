@@ -18,10 +18,11 @@ Cron entry (runs at 2am on the 1st of each month):
 Requires Ubuntu 24.04 (kernel 6.8+, ext4) for reliable creation time via stat st_birthtime.
 """
 
-import logging
-import subprocess
+import argparse
 from datetime import datetime, timedelta, timezone
+import logging
 from pathlib import Path
+import subprocess
 
 from orchestration.config import BeamlineConfig
 from orchestration.prune_controller import FileSystemPruneController
@@ -72,10 +73,10 @@ logger = logging.getLogger(__name__)
 
 
 def get_creation_time(path: Path) -> datetime | None:
-    """Return the birth (creation) time of a file or directory.
-
-    Uses st_birthtime via getattr — available on Ubuntu 24.04 (kernel 6.8+, ext4).
-    Returns None if creation time is unavailable or reported as zero.
+    """
+    Get the creation time of a file or directory as a timezone-aware datetime.
+    Uses st_birthtime if available (Ubuntu 24.04+ with ext4), otherwise falls back to st_ctime.
+    Returns None if the creation time cannot be determined.
 
     Args:
         path: Path to the file or directory.
@@ -85,16 +86,19 @@ def get_creation_time(path: Path) -> datetime | None:
     """
     try:
         stat = path.stat()
-        creation_ts = getattr(stat, "st_birthtime", None) or stat.st_mtime  # filesystem creation time
-        if not creation_ts:
+        # st_ctime = inode change time on Linux; reflects when file arrived on
+        # this filesystem regardless of source mtime. st_birthtime preferred if
+        # available (Ubuntu 24.04+ with ext4), but st_ctime is a reliable fallback.
+        ts = getattr(stat, "st_birthtime", None) or stat.st_ctime
+        if not ts:
             return None
-        return datetime.fromtimestamp(creation_ts, tz=timezone.utc)
+        return datetime.fromtimestamp(ts, tz=timezone.utc)
     except OSError as e:
         logger.warning(f"Could not stat {path}: {e}")
         return None
 
 
-def prune_zarr_volumes(endpoint: FileSystemEndpoint, cutoff: datetime, config: BeamlineConfig) -> None:
+def prune_zarr_volumes(endpoint: FileSystemEndpoint, cutoff: datetime, config: BeamlineConfig, dry_run: bool = False) -> None:
     """Remove Zarr volumes in the endpoint's root_path older than cutoff.
 
     Top-level directories prefixed with 'demo_' are preserved regardless of age.
@@ -104,6 +108,10 @@ def prune_zarr_volumes(endpoint: FileSystemEndpoint, cutoff: datetime, config: B
         endpoint: FileSystemEndpoint representing the Zarr samples directory.
         cutoff: Datetime threshold; volumes created before this are removed.
         config: Beamline configuration passed to FileSystemPruneController.
+        dry_run: If True, preview deletions without removing anything.
+
+    Returns:
+        None
     """
     sample_dir = Path(endpoint.root_path)
 
@@ -129,17 +137,24 @@ def prune_zarr_volumes(endpoint: FileSystemEndpoint, cutoff: datetime, config: B
             continue
 
         if creation < cutoff:
-            logger.info(f"Removing Zarr volume: {zarr_dir} (created {creation.date()})")
-            controller.prune_no_prefect(
-                file_path=zarr_dir.name,
-                source_endpoint=endpoint,
-                check_endpoint=None,
-            )
+            if dry_run:
+                logger.info(f"[DRY RUN] Would remove Zarr volume: {zarr_dir} (created {creation.date()})")
+            else:
+                logger.info(f"Removing Zarr volume: {zarr_dir} (created {creation.date()})")
+                controller.prune_no_prefect(
+                    file_path=zarr_dir.name,
+                    source_endpoint=endpoint,
+                )
         else:
             logger.info(f"Retaining: {zarr_dir} (created {creation.date()})")
 
 
-def prune_scratch_endpoint(endpoint: FileSystemEndpoint, cutoff: datetime, config: BeamlineConfig) -> None:
+def prune_scratch_endpoint(
+    endpoint: FileSystemEndpoint,
+    cutoff: datetime,
+    config: BeamlineConfig,
+    dry_run: bool = False
+) -> None:
     """Recursively remove files in the endpoint's root_path created before cutoff.
 
     After removing old files, sweeps empty directories bottom-up.
@@ -148,6 +163,7 @@ def prune_scratch_endpoint(endpoint: FileSystemEndpoint, cutoff: datetime, confi
         endpoint: FileSystemEndpoint representing the scratch directory to prune.
         cutoff: Datetime threshold; files created before this are removed.
         config: Beamline configuration passed to FileSystemPruneController.
+        dry_run: If True, preview deletions without removing anything.
     """
     scratch_dir = Path(endpoint.root_path)
 
@@ -169,21 +185,24 @@ def prune_scratch_endpoint(endpoint: FileSystemEndpoint, cutoff: datetime, confi
             continue
 
         if creation < cutoff:
-            logger.info(f"Removing file: {file} (created {creation.date()})")
-            controller.prune_no_prefect(
-                file_path=str(file.relative_to(scratch_dir)),
-                source_endpoint=endpoint,
-                check_endpoint=None,
-            )
+            if dry_run:
+                logger.info(f"[DRY RUN] Would remove file: {file} (created {creation.date()})")
+            else:
+                logger.info(f"Removing file: {file} (created {creation.date()})")
+                controller.prune_no_prefect(
+                    file_path=str(file.relative_to(scratch_dir)),
+                    source_endpoint=endpoint,
+                )
 
     # Sweep empty directories left behind, deepest-first
-    for directory in sorted(scratch_dir.rglob("*"), reverse=True):
-        if directory.is_dir() and not any(directory.iterdir()):
-            try:
-                directory.rmdir()
-                logger.info(f"Removed empty directory: {directory}")
-            except OSError as e:
-                logger.error(f"Failed to remove empty directory {directory}: {e}")
+    if not dry_run:
+        for directory in sorted(scratch_dir.rglob("*"), reverse=True):
+            if directory.is_dir() and not any(directory.iterdir()):
+                try:
+                    directory.rmdir()
+                    logger.info(f"Removed empty directory: {directory}")
+                except OSError as e:
+                    logger.error(f"Failed to remove empty directory {directory}: {e}")
 
     logger.info(f"Scratch cleanup complete for {endpoint.name}")
 
@@ -210,6 +229,13 @@ def prune_docker() -> None:
 
 def main() -> None:
     """Run all cleanup tasks for bl832recon1x."""
+    parser = argparse.ArgumentParser(description="bl832recon1x periodic storage cleanup.")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview deletions without removing anything.",
+    )
+    args = parser.parse_args()
     logging.basicConfig(
         level=logging.INFO,
         format="[%(asctime)s] %(levelname)s %(message)s",
@@ -227,10 +253,10 @@ def main() -> None:
     logger.info(f"Pruning items created before {cutoff.date()}")
     logger.info("==========================================")
 
-    prune_zarr_volumes(SAMPLE_ENDPOINT, cutoff, config)
+    prune_zarr_volumes(SAMPLE_ENDPOINT, cutoff, config, dry_run=args.dry_run)
 
     for endpoint in SCRATCH_ENDPOINTS:
-        prune_scratch_endpoint(endpoint, cutoff, config)
+        prune_scratch_endpoint(endpoint, cutoff, config, dry_run=args.dry_run)
 
     # prune_docker()
 
