@@ -13,7 +13,7 @@ Cron setup (run once):
 
 Cron entry (runs at 2am on the 1st of each month):
     0 2 1 * * /home/bl832user/Documents/code/splash_flows/.venv/bin/python
-    /home/bl832user/Documents/code/splash_flows/orchestration/flows/bl832/bl832_cleanup.py
+    /home/bl832user/Documents/code/splash_flows/orchestration/flows/bl832/prune_bl832recon1x.py
 
 Requires Ubuntu 24.04 (kernel 6.8+, ext4) for reliable creation time via stat st_birthtime.
 """
@@ -223,7 +223,7 @@ def main() -> None:
     for endpoint in SCRATCH_ENDPOINTS:
         prune_scratch_endpoint(endpoint, cutoff, config)
 
-    prune_docker()
+    # prune_docker()
 
     logger.info("==========================================")
     logger.info("Cleanup complete")
