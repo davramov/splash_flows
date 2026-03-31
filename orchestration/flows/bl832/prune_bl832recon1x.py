@@ -31,6 +31,16 @@ from orchestration.transfer_endpoints import FileSystemEndpoint
 # Configuration — edit here to adjust behaviour
 # ---------------------------------------------------------------------------
 
+
+class _LocalConfig(BeamlineConfig):
+    """Minimal config for local-only cleanup — no Globus connections."""
+    def __init__(self) -> None:
+        super().__init__(beamline_id="8.3.2")
+
+    def _beam_specific_config(self) -> None:
+        pass  # no Globus, no transfer client
+
+
 SAMPLE_ENDPOINT = FileSystemEndpoint(
     name="bl832recon1x_samples",
     root_path="/home/bl832user/Documents/example_samples",
@@ -209,8 +219,7 @@ def main() -> None:
             logging.StreamHandler(),
         ],
     )
-    from orchestration.flows.bl832.config import Config832
-    config = Config832()
+    config = _LocalConfig()
     cutoff = datetime.now(tz=timezone.utc) - timedelta(days=PRUNE_AFTER_DAYS)
 
     logger.info("==========================================")
