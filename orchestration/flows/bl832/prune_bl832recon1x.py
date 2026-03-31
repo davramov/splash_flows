@@ -19,6 +19,7 @@ Requires Ubuntu 24.04 (kernel 6.8+, ext4) for reliable creation time via stat st
 """
 
 import argparse
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 import logging
 from pathlib import Path
@@ -175,6 +176,8 @@ def prune_scratch_endpoint(
 
     controller = FileSystemPruneController(config)
 
+    files_by_dir: dict[Path, list[Path]] = defaultdict(list)
+
     for file in sorted(scratch_dir.rglob("*")):
         if not file.is_file():
             continue
@@ -185,10 +188,14 @@ def prune_scratch_endpoint(
             continue
 
         if creation < cutoff:
-            if dry_run:
-                logger.info(f"[DRY RUN] Would remove file: {file} (created {creation.date()})")
-            else:
-                logger.info(f"Removing file: {file} (created {creation.date()})")
+            files_by_dir[file.parent].append(file)
+
+    for parent_dir, files in sorted(files_by_dir.items()):
+        if dry_run:
+            logger.info(f"[DRY RUN] Would remove {len(files)} file(s) from {parent_dir}")
+        else:
+            logger.info(f"Removing {len(files)} file(s) from {parent_dir}")
+            for file in files:
                 controller.prune_no_prefect(
                     file_path=str(file.relative_to(scratch_dir)),
                     source_endpoint=endpoint,
