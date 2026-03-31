@@ -5,15 +5,14 @@ Removes old Zarr volumes, scratch data, and Docker artifacts to prevent
 storage saturation. Intended to run monthly as a cron job with root privileges.
 
 Cron setup (run once):
-    cd /home/bl832user/Documents/code/splash_flows
+    cd /home/bl832user/Documents/code/prune_recon1x/splash_flows
     python3 -m venv .venv
     source .venv/bin/activate
     pip install -e .
     sudo crontab -e
 
 Cron entry (runs at 2am on the 1st of each month):
-    0 2 1 * * /home/bl832user/Documents/code/splash_flows/.venv/bin/python
-    /home/bl832user/Documents/code/splash_flows/orchestration/flows/bl832/prune_bl832recon1x.py
+    0 2 1 * * cd /home/bl832user/Documents/code/prune_recon1x/splash_flows && /home/bl832user/Documents/code/prune_recon1x/splash_flows/.venv/bin/python -m orchestration.flows.bl832.prune_bl832recon1x
 
 Requires Ubuntu 24.04 (kernel 6.8+, ext4) for reliable creation time via stat st_birthtime.
 """
