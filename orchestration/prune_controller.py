@@ -3,6 +3,8 @@ import datetime
 from enum import Enum
 import logging
 import os
+from pathlib import Path
+import shutil
 from typing import Generic, Optional, TypeVar
 
 from prefect import flow
@@ -160,6 +162,54 @@ class FileSystemPruneController(PruneController[FileSystemEndpoint]):
                 logger.error(f"Failed to schedule pruning task: {str(e)}", exc_info=True)
                 return False
 
+    def prune_no_prefect(
+        self,
+        file_path: str,
+        source_endpoint: FileSystemEndpoint,
+        check_endpoint: FileSystemEndpoint | None = None,
+    ) -> bool:
+        """Prune a file or directory immediately using only local filesystem operations.
+
+        Bypasses Prefect entirely — safe to call outside a running Prefect server.
+        Intended for standalone scripts such as cron-based cleanup jobs.
+
+        :param file_path: Relative path of the file or directory to remove.
+        :param source_endpoint: The filesystem endpoint whose root_path anchors the deletion.
+        :param check_endpoint: If provided, abort unless the path also exists here.
+        :return: True if pruning succeeded, False otherwise.
+        """
+        if not file_path:
+            logger.error("No file_path provided for pruning operation")
+            return False
+
+        if not source_endpoint:
+            logger.error("No source_endpoint provided for pruning operation")
+            return False
+
+        source_full_path = Path(source_endpoint.full_path(file_path))
+
+        if not source_full_path.exists():
+            logger.warning(f"Path does not exist at source, skipping: {source_full_path}")
+            return False
+
+        if check_endpoint is not None:
+            check_full_path = Path(check_endpoint.full_path(file_path))
+            if not check_full_path.exists():
+                logger.warning(f"Path not found at check endpoint {check_endpoint.name}, skipping: {file_path}")
+                return False
+            logger.info(f"Check endpoint confirmed: {check_full_path}")
+
+        try:
+            if source_full_path.is_dir():
+                shutil.rmtree(source_full_path)
+            else:
+                source_full_path.unlink()
+            logger.info(f"Pruned: {source_full_path}")
+            return True
+        except OSError as e:
+            logger.error(f"Failed to prune {source_full_path}: {e}")
+            return False
+
 
 @flow(name="prune_filesystem_endpoint")
 def prune_filesystem_endpoint(
@@ -200,7 +250,6 @@ def prune_filesystem_endpoint(
     # Now perform the pruning operation
     if os.path.isdir(source_full_path):
         logger.info(f"Pruning directory {relative_path}")
-        import shutil
         shutil.rmtree(source_full_path)
     else:
         logger.info(f"Pruning file {relative_path}")

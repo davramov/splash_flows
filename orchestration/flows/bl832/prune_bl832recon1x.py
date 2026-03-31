@@ -85,7 +85,7 @@ def get_creation_time(path: Path) -> datetime | None:
     """
     try:
         stat = path.stat()
-        creation_ts = getattr(stat, "st_birthtime", None)  # filesystem creation time
+        creation_ts = getattr(stat, "st_birthtime", None) or stat.st_mtime  # filesystem creation time
         if not creation_ts:
             return None
         return datetime.fromtimestamp(creation_ts, tz=timezone.utc)
@@ -130,10 +130,10 @@ def prune_zarr_volumes(endpoint: FileSystemEndpoint, cutoff: datetime, config: B
 
         if creation < cutoff:
             logger.info(f"Removing Zarr volume: {zarr_dir} (created {creation.date()})")
-            controller.prune(
+            controller.prune_no_prefect(
                 file_path=zarr_dir.name,
                 source_endpoint=endpoint,
-                days_from_now=0,
+                check_endpoint=None,
             )
         else:
             logger.info(f"Retaining: {zarr_dir} (created {creation.date()})")
@@ -170,10 +170,10 @@ def prune_scratch_endpoint(endpoint: FileSystemEndpoint, cutoff: datetime, confi
 
         if creation < cutoff:
             logger.info(f"Removing file: {file} (created {creation.date()})")
-            controller.prune(
+            controller.prune_no_prefect(
                 file_path=str(file.relative_to(scratch_dir)),
                 source_endpoint=endpoint,
-                days_from_now=0,
+                check_endpoint=None,
             )
 
     # Sweep empty directories left behind, deepest-first
