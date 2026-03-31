@@ -236,15 +236,15 @@ def main() -> None:
         help="Preview deletions without removing anything.",
     )
     args = parser.parse_args()
-    logging.basicConfig(
-        level=logging.INFO,
-        format="[%(asctime)s] %(levelname)s %(message)s",
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    formatter = logging.Formatter(
+        fmt="[%(asctime)s] %(levelname)s %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
-        handlers=[
-            logging.FileHandler(LOG_FILE),
-            logging.StreamHandler(),
-        ],
     )
+    for handler in [logging.FileHandler(LOG_FILE), logging.StreamHandler()]:
+        handler.setFormatter(formatter)
+        root_logger.addHandler(handler)
     config = _LocalConfig()
     cutoff = datetime.now(tz=timezone.utc) - timedelta(days=PRUNE_AFTER_DAYS)
 
