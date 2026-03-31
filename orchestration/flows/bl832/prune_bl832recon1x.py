@@ -64,7 +64,7 @@ SCRATCH_ENDPOINTS: list[FileSystemEndpoint] = [
 ]
 
 PRUNE_AFTER_DAYS = 30
-LOG_FILE = Path("/var/log/bl832_cleanup.log")
+LOG_FILE = Path("/tmp/bl832_cleanup.log")
 
 # ---------------------------------------------------------------------------
 
