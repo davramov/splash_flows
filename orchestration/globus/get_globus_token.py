@@ -11,6 +11,7 @@ from pathlib import Path
 import globus_sdk
 from globus_sdk.exc import GlobusAPIError
 
+DEFAULT_TOKEN_FILE: Path = Path.home() / ".globus" / "auth_tokens.json"
 CLIENT_ID = "fae5c579-490a-4d76-b6eb-d78f65caeb63"
 RESOURCE_SERVER = "auth.globus.org"
 IRI_SCOPE = (
@@ -262,6 +263,52 @@ def refresh_stored_tokens(
             return auth_data, True
 
     return None, False
+
+
+def get_iri_access_token(
+    token_file: Path = DEFAULT_TOKEN_FILE,
+    force_login: bool = False,
+    prompt_login: bool = False,
+) -> str:
+    """
+    Get a valid IRI access token, refreshing or prompting for login as needed.
+    Tokens are saved to the specified token_file path (default: ~/.globus/auth_tokens.json).
+    By default, the function will attempt to refresh saved tokens before falling back
+    to interactive login. Use force_login=True to skip refresh and require interactive login.
+    Use prompt_login=True to add prompt=login to the authorization URL, which forces
+    re-authentication even if the user has an active Globus session in their browser.
+
+    Args:
+        token_file: Path to save and load token data (default: ~/.globus/auth_tokens.json)
+        force_login: If True, skip token refresh and require interactive login
+        prompt_login: If True, add prompt=login to the authorization URL to force re-authentication
+
+    Returns:
+        A valid IRI access token string with the required scopes.
+
+    Raises:
+        RuntimeError: If token refresh fails and interactive login is not allowed or fails,
+            or if the resulting tokens do not include a valid IRI access token.
+    """
+    client = globus_sdk.NativeAppAuthClient(CLIENT_ID)
+    auth_data = None
+    used_refresh = False
+    if not force_login:
+        stored = load_tokens(token_file)
+        if stored:
+            auth_data, used_refresh = refresh_stored_tokens(client, stored)
+    if auth_data is None:
+        auth_data = interactive_login(client, prompt_login=prompt_login)
+    try:
+        iri_token_data = validate_auth_data(auth_data)
+    except RuntimeError as exc:
+        if used_refresh and "Missing token for required IRI scope" in str(exc):
+            auth_data = interactive_login(client, prompt_login=prompt_login)
+            iri_token_data = validate_auth_data(auth_data)
+        else:
+            raise
+    save_tokens(token_file, auth_data)
+    return iri_token_data["access_token"]
 
 
 def main() -> None:
