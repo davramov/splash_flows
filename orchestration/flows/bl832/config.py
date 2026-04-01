@@ -34,5 +34,5 @@ class Config832(BeamlineConfig):
         self.nersc_recon_settings = self.config["hpc_submission_settings832"]["nersc_reconstruction"]
         self.nersc_multiresolution_settings = self.config["hpc_submission_settings832"]["nersc_multiresolution"]
         self.nersc_segment_sam3_settings = self.config["hpc_submission_settings832"]["nersc_segmentation_sam3"]
-        self.nersc_segment_dino_settings = self.config["hpc_submission_settings832"]["nersc_segmentation_dino"]
+        self.nersc_segment_dinov3_settings = self.config["hpc_submission_settings832"]["nersc_segmentation_dinov3"]
         self.nersc_combine_segmentation_settings = self.config["hpc_submission_settings832"]["nersc_combine_segmentations"]

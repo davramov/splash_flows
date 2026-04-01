@@ -207,7 +207,7 @@ hpc_submission_settings832:
     bpe_path: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/sam3_finetune/sam3/bpe_simple_vocab_16e6.txt.gz
     original_checkpoint_path: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/sam3_finetune/sam3/sam3.pt
     finetuned_checkpoint_path: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/sam3_finetune/sam3/checkpoint_v6.pt
-  nersc_segmentation_dino:
+  nersc_segmentation_dinov3:
     # ── SLURM resource allocation ─────────────────────────────────────────────
     qos: regular
     account: als

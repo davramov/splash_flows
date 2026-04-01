@@ -789,25 +789,25 @@ exit $SEG_STATUS
                 "output_dir": None
             }
 
-    def segmentation_dino(
+    def segmentation_dinov3(
         self,
         recon_folder_path: str = "",
     ) -> bool:
         """
-        Run DINO segmentation at NERSC Perlmutter via SFAPI Slurm job.
+        Run DINOv3 segmentation at NERSC Perlmutter via SFAPI Slurm job.
 
         :param recon_folder_path: Relative path to the reconstructed data folder,
                e.g. 'folder_name/recYYYYMMDD_hhmmss_scanname/'
         :return: True if the job completed successfully, False otherwise.
         """
-        logger.info("Starting NERSC DINO segmentation process.")
+        logger.info("Starting NERSC DINOv3 segmentation process.")
 
         user = self.client.user()
         pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
 
         # Load from config
 
-        opts = _load_job_options("nersc-dino-seg-options", self.config.nersc_segment_dino_settings)
+        opts = _load_job_options("nersc-dinov3-seg-options", self.config.nersc_segment_dinov3_settings)
 
         cfs_path = opts["cfs_path"]
         conda_env_path = opts["conda_env_path"]
@@ -830,8 +830,8 @@ exit $SEG_STATUS
         seg_folder = recon_folder_path.replace("/rec", "/seg")
         output_dir = f"{pscratch_path}/8.3.2/scratch/{seg_folder}/dino"
 
-        logger.info(f"DINO input dir:  {input_dir}")
-        logger.info(f"DINO output dir: {output_dir}")
+        logger.info(f"DINOv3 input dir:  {input_dir}")
+        logger.info(f"DINOv3 output dir: {output_dir}")
 
         reservation_line = f"#SBATCH --reservation={reservation}" if reservation else ""
         job_name = f"dino_{Path(recon_folder_path).name}"
@@ -870,7 +870,7 @@ mkdir -p {output_dir}
 mkdir -p {pscratch_path}/tomo_seg_logs
 
 echo "============================================================"
-echo "DINO SEGMENTATION STARTED: $(date)"
+echo "DINOv3 SEGMENTATION STARTED: $(date)"
 echo "============================================================"
 echo "Master: $MASTER_ADDR:$MASTER_PORT"
 echo "Nodes: $SLURM_JOB_NODELIST"
@@ -914,7 +914,7 @@ SECONDS=$((DURATION % 60))
 
 echo ""
 echo "============================================================"
-echo "DINO SEGMENTATION COMPLETED: $(date)"
+echo "DINOv3 SEGMENTATION COMPLETED: $(date)"
 echo "============================================================"
 echo "Total time: ${{MINUTES}}m ${{SECONDS}}s (${{DURATION}}s)"
 echo "Images processed: ${{NUM_IMAGES}}"
@@ -926,7 +926,7 @@ chmod -R 2775 {output_dir} 2>/dev/null || true
 exit $SEG_STATUS
 """
         try:
-            logger.info("Submitting DINO segmentation job to Perlmutter.")
+            logger.info("Submitting DINOv3 segmentation job to Perlmutter.")
             perlmutter = self.client.compute(Machine.perlmutter)
             job = perlmutter.submit_job(job_script)
             logger.info(f"Submitted job ID: {job.jobid}")
@@ -940,11 +940,11 @@ exit $SEG_STATUS
             logger.info(f"Job {job.jobid} current state: {job.state}")
 
             job.complete()
-            logger.info("DINO segmentation job completed successfully.")
+            logger.info("DINOv3 segmentation job completed successfully.")
             return True
 
         except Exception as e:
-            logger.error(f"Error during DINO segmentation job submission or completion: {e}")
+            logger.error(f"Error during DINOv3 segmentation job submission or completion: {e}")
             match = re.search(r"Job not found:\s*(\d+)", str(e))
             if match:
                 jobid = match.group(1)
@@ -953,7 +953,7 @@ exit $SEG_STATUS
                     job = self.client.compute(Machine.perlmutter).job(jobid=jobid)
                     time.sleep(30)
                     job.complete()
-                    logger.info("DINO segmentation job completed successfully after recovery.")
+                    logger.info("DINOv3 segmentation job completed successfully after recovery.")
                     return True
                 except Exception as recovery_err:
                     logger.error(f"Failed to recover job {jobid}: {recovery_err}")
@@ -966,7 +966,7 @@ exit $SEG_STATUS
         recon_folder_path: str = "",
     ) -> bool:
         """
-        Run CPU-based combination of SAM3+DINO segmentation results
+        Run CPU-based combination of SAM3+DINOv3 segmentation results
         at NERSC Perlmutter via SFAPI Slurm job.
 
         :param recon_folder_path: Relative path to the reconstructed data folder,
@@ -998,7 +998,7 @@ exit $SEG_STATUS
         seg_base = f"{pscratch_path}/8.3.2/scratch/{seg_folder}"
 
         sam3_results = f"{seg_base}/sam3"
-        dino_results = f"{seg_base}/dino"
+        dinov3_results = f"{seg_base}/dino"
         combined_output = f"{seg_base}/combined"
 
         logger.info(f"Combine input dir:  {input_dir}")
@@ -1031,7 +1031,7 @@ echo "SEGMENTATION COMBINATION STARTED: $(date)"
 echo "============================================================"
 echo "Input:    {input_dir}"
 echo "SAM3:     {sam3_results}"
-echo "DINO:     {dino_results}"
+echo "DINOv3:     {dinov3_results}"
 echo "Output:   {combined_output}"
 echo "Dilate:   {dilate_px}px"
 echo "============================================================"
@@ -1040,18 +1040,18 @@ START_TIME=$(date +%s)
 
 cd {seg_scripts_dir}
 
-echo "--- Running SAM3 + DINO combination (v3) ---"
+echo "--- Running SAM3 + DINOv3 combination ---"
 python -m {script_name} \\
     --input-dir "{input_dir}" \\
     --instance-masks-dir "{sam3_results}" \\
-    --semantic-masks-dir "{dino_results}/semantic_masks" \\
+    --semantic-masks-dir "{dinov3_results}/semantic_masks" \\
     --output-dir "{combined_output}/sam_dino" \\
     --dilate-px {dilate_px} \\
     --save-extracted \\
     --dino-trust Cortex Phloem_Fibers Phloem Air-based_Pith_cells Water-based_Pith_cells
 
 SAM_DINO_STATUS=$?
-echo "SAM3+DINO exit status: $SAM_DINO_STATUS"
+echo "SAM3+DINOv3 exit status: $SAM_DINO_STATUS"
 
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
@@ -1063,7 +1063,7 @@ echo "============================================================"
 echo "SEGMENTATION COMBINATION COMPLETED: $(date)"
 echo "============================================================"
 echo "Total time: ${{MINUTES}}m ${{SECONDS}}s (${{DURATION}}s)"
-echo "SAM3+DINO status:     $SAM_DINO_STATUS"
+echo "SAM3+DINOv3 status:     $SAM_DINO_STATUS"
 echo "============================================================"
 
 chmod -R 2775 {combined_output} 2>/dev/null || true
@@ -1624,10 +1624,10 @@ def nersc_petiole_segment_flow(
 
     nersc_reconstruction_success = False
     sam3_success = False
-    dino_success = False
+    dinov3_success = False
     data832_tiff_transfer_success = False
     data832_sam3_transfer_success = False
-    data832_dino_transfer_success = False
+    data832_dinov3_transfer_success = False
     data832_combined_transfer_success = False
 
     # ── STEP 1: Multinode Reconstruction ─────────────────────────────────────
@@ -1689,7 +1689,7 @@ def nersc_petiole_segment_flow(
     sam3_future = nersc_segmentation_sam3_task.submit(
         recon_folder_path=scratch_path_tiff, config=config
     )
-    dino_future = nersc_segmentation_dino_task.submit(
+    dinov3_future = nersc_segmentation_dinov3_task.submit(
         recon_folder_path=scratch_path_tiff, config=config
     )
 
@@ -1710,27 +1710,27 @@ def nersc_petiole_segment_flow(
         except Exception as e:
             logger.error(f"Failed to transfer SAM3 outputs to data832: {e}")
 
-    dino_success = dino_future.result()
-    logger.info(f"DINO segmentation result: {dino_success}")
-    if dino_success:
-        logger.info("Transferring DINO segmentation outputs to data832")
-        dino_segment_path = f"{folder_name}/seg{file_name}/dino"
+    dinov3_success = dinov3_future.result()
+    logger.info(f"DINOv3 segmentation result: {dinov3_success}")
+    if dinov3_success:
+        logger.info("Transferring DINOv3 segmentation outputs to data832")
+        dinov3_segment_path = f"{folder_name}/seg{file_name}/dino"
         try:
-            data832_dino_transfer_success = transfer_controller.copy(
-                file_path=dino_segment_path,
+            data832_dinov3_transfer_success = transfer_controller.copy(
+                file_path=dinov3_segment_path,
                 source=config.nersc832_alsdev_pscratch_scratch,
                 destination=config.data832_scratch
             )
-            logger.info(f"DINO transfer to data832 success: {data832_dino_transfer_success}")
+            logger.info(f"DINOv3 transfer to data832 success: {data832_dinov3_transfer_success}")
         except Exception as e:
-            logger.error(f"Failed to transfer DINO outputs to data832: {e}")
+            logger.error(f"Failed to transfer DINOv3 outputs to data832: {e}")
 
-    any_seg_success = any([sam3_success, dino_success])
+    any_seg_success = any([sam3_success, dinov3_success])
 
-    logger.info(f"Segmentation results — SAM3: {sam3_success}, DINO: {dino_success}")
+    logger.info(f"Segmentation results — SAM3: {sam3_success}, DINOv3: {dinov3_success}")
 
-    # ── STEP 5: Combine Segmentations (after SAM3+DINO complete) ──
-    if dino_success and sam3_success:
+    # ── STEP 5: Combine Segmentations (after SAM3+DINOv3 complete) ──
+    if dinov3_success and sam3_success:
         logger.info("Running segmentation combination.")
 
         combine_future = nersc_combine_segmentations_task.submit(
@@ -1799,7 +1799,7 @@ def nersc_petiole_segment_flow(
                 source_endpoint=config.nersc832_alsdev_pscratch_scratch,
                 check_endpoint=config.data832_scratch if any([
                     data832_sam3_transfer_success,
-                    data832_dino_transfer_success,
+                    data832_dinov3_transfer_success,
                 ]) else None,
                 days_from_now=1.0
             )
@@ -1818,7 +1818,7 @@ def nersc_petiole_segment_flow(
             logger.warning(f"Failed to schedule data832 tiff pruning: {e}")
 
     if any([data832_sam3_transfer_success,
-            data832_dino_transfer_success,
+            data832_dinov3_transfer_success,
             data832_combined_transfer_success]):
         try:
             prune_controller.prune(
@@ -1836,7 +1836,7 @@ def nersc_petiole_segment_flow(
     else:
         logger.warning(
             f"Flow completed with issues: recon={nersc_reconstruction_success}, "
-            f"sam3={sam3_success}, dino={dino_success}"
+            f"sam3={sam3_success}, dinov3={dinov3_success}"
         )
         return False
 
@@ -1991,8 +1991,8 @@ def nersc_segmentation_sam3_task(
     return nersc_segmentation_success
 
 
-@task(name="nersc_segmentation_dino_task")
-def nersc_segmentation_dino_task(
+@task(name="nersc_segmentation_dinov3_task")
+def nersc_segmentation_dinov3_task(
     recon_folder_path: str,
     config: Optional[Config832] = None,
 ) -> bool:
@@ -2001,12 +2001,12 @@ def nersc_segmentation_dino_task(
         logger.info("No config provided, using default Config832.")
         config = Config832()
     tomography_controller = get_controller(hpc_type=HPC.NERSC, config=config)
-    logger.info(f"Starting NERSC DINO segmentation task for {recon_folder_path=}")
-    success = tomography_controller.segmentation_dino(recon_folder_path=recon_folder_path)
+    logger.info(f"Starting NERSC DINOv3 segmentation task for {recon_folder_path=}")
+    success = tomography_controller.segmentation_dinov3(recon_folder_path=recon_folder_path)
     if not success:
-        logger.error("DINO segmentation failed.")
+        logger.error("DINOv3 segmentation failed.")
     else:
-        logger.info("DINO segmentation successful.")
+        logger.info("DINOv3 segmentation successful.")
     return success
 
 
