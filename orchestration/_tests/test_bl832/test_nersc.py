@@ -181,19 +181,19 @@ def mock_iriapi_client(mocker):
     client = mocker.MagicMock()
 
     submit_response = mocker.MagicMock()
-    submit_response.json.return_value = {"job_id": "99999"}
+    submit_response.json.return_value = {"id": "99999"}
     client.post.return_value = submit_response
 
     status_response = mocker.MagicMock()
-    status_response.json.return_value = {"state": "COMPLETED"}
+    status_response.json.return_value = {"status": {"state": "completed"}}
     client.get.return_value = status_response
 
     return client
 
-
 # ---------------------------------------------------------------------------
 # _create_sfapi_client
 # ---------------------------------------------------------------------------
+
 
 def test_create_sfapi_client_success(mocker):
     """Valid credentials produce a Client instance."""
@@ -472,7 +472,7 @@ def test_reconstruct_iriapi_job_failed(mocker, mock_iriapi_client, mock_config83
 
     monkeypatch.setenv("NERSC_USERNAME", "alsdev")
     mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
-    mock_iriapi_client.get.return_value.json.return_value = {"state": "FAILED"}
+    mock_iriapi_client.get.return_value.json.return_value = {"status": {"state": "failed"}}  # was {"state": "FAILED"}
 
     controller = NERSCTomographyHPCController(
         client=mock_iriapi_client,
@@ -970,17 +970,17 @@ def test_build_multi_resolution_iriapi_success(mocker, mock_iriapi_client, mock_
     assert result is True
     mock_iriapi_client.post.assert_called_once()
     mock_iriapi_client.get.assert_called_once_with(
-        "/api/v1/compute/status/perlmutter/99999"
+        "/api/v1/compute/status/compute/99999"
     )
 
 
 def test_build_multi_resolution_iriapi_failure(mocker, mock_iriapi_client, mock_config, monkeypatch):
-    """IRIAPI build_multi_resolution returns False when job state is FAILED."""
+    """IRIAPI build_multi_resolution returns False when job state is failed."""
     from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
 
     monkeypatch.setenv("NERSC_USERNAME", "alsdev")
     mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
-    mock_iriapi_client.get.return_value.json.return_value = {"state": "FAILED"}
+    mock_iriapi_client.get.return_value.json.return_value = {"status": {"state": "failed"}}
 
     controller = NERSCTomographyHPCController(
         client=mock_iriapi_client,
