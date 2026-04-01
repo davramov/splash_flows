@@ -115,7 +115,7 @@ def mock_config832(mocker):
         "original_checkpoint_path": "/mock/original.pt",
         "finetuned_checkpoint_path": "/mock/checkpoints/finetuned.pt",
     }
-    mock_config.nersc_segment_dino_settings = {
+    mock_config.nersc_segment_dinov3_settings = {
         "qos": "regular",
         "account": "mock_account",
         "constraint": "gpu",
@@ -358,10 +358,10 @@ def test_segmentation_sam3_uses_variable_options(mocker, mock_sfapi_client, mock
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# segmentation_dino
+# segmentation_dinov3
 # ──────────────────────────────────────────────────────────────────────────────
 
-def test_segmentation_dino_success(mocker, mock_sfapi_client, mock_config832):
+def test_segmentation_dinov3_success(mocker, mock_sfapi_client, mock_config832):
     from orchestration.flows.bl832.nersc import NERSCTomographyHPCController
     from sfapi_client.compute import Machine
 
@@ -369,7 +369,7 @@ def test_segmentation_dino_success(mocker, mock_sfapi_client, mock_config832):
     mocker.patch("orchestration.flows.bl832.nersc.Variable.get", return_value={"defaults": True})
     controller = NERSCTomographyHPCController(client=mock_sfapi_client, config=mock_config832)
 
-    result = controller.segmentation_dino(recon_folder_path="folder/recfile")
+    result = controller.segmentation_dinov3(recon_folder_path="folder/recfile")
 
     mock_sfapi_client.compute.assert_called_with(Machine.perlmutter)
     mock_sfapi_client.compute.return_value.submit_job.assert_called_once()
@@ -377,7 +377,7 @@ def test_segmentation_dino_success(mocker, mock_sfapi_client, mock_config832):
     assert result is True
 
 
-def test_segmentation_dino_submission_failure(mocker, mock_sfapi_client, mock_config832):
+def test_segmentation_dinov3_submission_failure(mocker, mock_sfapi_client, mock_config832):
     from orchestration.flows.bl832.nersc import NERSCTomographyHPCController
 
     mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
@@ -385,12 +385,12 @@ def test_segmentation_dino_submission_failure(mocker, mock_sfapi_client, mock_co
     mock_sfapi_client.compute.return_value.submit_job.side_effect = Exception("No GPU nodes")
     controller = NERSCTomographyHPCController(client=mock_sfapi_client, config=mock_config832)
 
-    result = controller.segmentation_dino(recon_folder_path="folder/recfile")
+    result = controller.segmentation_dinov3(recon_folder_path="folder/recfile")
 
     assert result is False
 
 
-def test_segmentation_dino_output_paths(mocker, mock_sfapi_client, mock_config832):
+def test_segmentation_dinov3_output_paths(mocker, mock_sfapi_client, mock_config832):
     """
     Output dir should swap /rec for /seg in the folder name and route to /dino.
 
@@ -413,7 +413,7 @@ def test_segmentation_dino_output_paths(mocker, mock_sfapi_client, mock_config83
 
     mock_sfapi_client.compute.return_value.submit_job.side_effect = capture
     controller = NERSCTomographyHPCController(client=mock_sfapi_client, config=mock_config832)
-    controller.segmentation_dino(recon_folder_path="folder/recfile")
+    controller.segmentation_dinov3(recon_folder_path="folder/recfile")
 
     script = captured_scripts[0]
     assert "segfile" in script
@@ -527,32 +527,32 @@ def test_nersc_segmentation_sam3_task_failure(mocker, mock_config832):
     assert result["success"] is False
 
 
-def test_nersc_segmentation_dino_task_success(mocker, mock_config832):
-    from orchestration.flows.bl832.nersc import nersc_segmentation_dino_task
+def test_nersc_segmentation_dinov3_task_success(mocker, mock_config832):
+    from orchestration.flows.bl832.nersc import nersc_segmentation_dinov3_task
 
     mocker.patch("orchestration.flows.bl832.nersc.get_run_logger", return_value=mocker.MagicMock())
     mock_controller = mocker.MagicMock()
-    mock_controller.segmentation_dino.return_value = True
+    mock_controller.segmentation_dinov3.return_value = True
     mocker.patch("orchestration.flows.bl832.nersc.get_controller", return_value=mock_controller)
 
-    result = nersc_segmentation_dino_task.fn(
+    result = nersc_segmentation_dinov3_task.fn(
         recon_folder_path="folder/recfile",
         config=mock_config832
     )
 
-    mock_controller.segmentation_dino.assert_called_once_with(recon_folder_path="folder/recfile")
+    mock_controller.segmentation_dinov3.assert_called_once_with(recon_folder_path="folder/recfile")
     assert result is True
 
 
-def test_nersc_segmentation_dino_task_failure(mocker, mock_config832):
-    from orchestration.flows.bl832.nersc import nersc_segmentation_dino_task
+def test_nersc_segmentation_dinov3_task_failure(mocker, mock_config832):
+    from orchestration.flows.bl832.nersc import nersc_segmentation_dinov3_task
 
     mocker.patch("orchestration.flows.bl832.nersc.get_run_logger", return_value=mocker.MagicMock())
     mock_controller = mocker.MagicMock()
-    mock_controller.segmentation_dino.return_value = False
+    mock_controller.segmentation_dinov3.return_value = False
     mocker.patch("orchestration.flows.bl832.nersc.get_controller", return_value=mock_controller)
 
-    result = nersc_segmentation_dino_task.fn(
+    result = nersc_segmentation_dinov3_task.fn(
         recon_folder_path="folder/recfile",
         config=mock_config832
     )
@@ -594,7 +594,7 @@ def test_nersc_combine_segmentations_task_failure(mocker, mock_config832):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# nersc_petiole_segment_flow  (recon + SAM3 + DINO + combine)
+# nersc_petiole_segment_flow  (recon + SAM3 + DINOv3 + combine)
 #
 # Replaces the former nersc_forge_recon_multisegment_flow tests.
 # The cleaned nersc.py exposes nersc_petiole_segment_flow as the canonical
@@ -607,7 +607,7 @@ def test_nersc_combine_segmentations_task_failure(mocker, mock_config832):
 # ──────────────────────────────────────────────────────────────────────────────
 
 def test_petiole_segment_flow_both_succeed(mocker, mock_config832, mock_recon_success):
-    """Recon + SAM3 + DINO all succeed → combine is called → flow returns True."""
+    """Recon + SAM3 + DINOv3 all succeed → combine is called → flow returns True."""
     from orchestration.flows.bl832.nersc import nersc_petiole_segment_flow
 
     mock_controller = mocker.MagicMock()
@@ -620,13 +620,13 @@ def test_petiole_segment_flow_both_succeed(mocker, mock_config832, mock_recon_su
     mocker.patch("orchestration.flows.bl832.nersc.get_prune_controller", return_value=mocker.MagicMock())
 
     mock_sam3_task = mocker.patch("orchestration.flows.bl832.nersc.nersc_segmentation_sam3_task")
-    mock_dino_task = mocker.patch("orchestration.flows.bl832.nersc.nersc_segmentation_dino_task")
+    mock_dinov3_task = mocker.patch("orchestration.flows.bl832.nersc.nersc_segmentation_dinov3_task")
     mock_combine_task = mocker.patch("orchestration.flows.bl832.nersc.nersc_combine_segmentations_task")
 
     mock_sam3_task.submit.return_value = _make_future(
         mocker, {"success": True, "job_id": "1", "timing": None, "output_dir": "/out/sam3"}
     )
-    mock_dino_task.submit.return_value = _make_future(mocker, True)
+    mock_dinov3_task.submit.return_value = _make_future(mocker, True)
     mock_combine_task.submit.return_value = _make_future(mocker, True)
 
     result = nersc_petiole_segment_flow(file_path="folder/file.h5", num_nodes=4, config=None)
@@ -634,7 +634,7 @@ def test_petiole_segment_flow_both_succeed(mocker, mock_config832, mock_recon_su
     assert result is True
     mock_controller.reconstruct.assert_called_once()
     mock_sam3_task.submit.assert_called_once()
-    mock_dino_task.submit.assert_called_once()
+    mock_dinov3_task.submit.assert_called_once()
     mock_combine_task.submit.assert_called_once()
 
 
@@ -652,13 +652,13 @@ def test_petiole_segment_flow_only_sam3_succeeds(mocker, mock_config832, mock_re
     mocker.patch("orchestration.flows.bl832.nersc.get_prune_controller", return_value=mocker.MagicMock())
 
     mock_sam3_task = mocker.patch("orchestration.flows.bl832.nersc.nersc_segmentation_sam3_task")
-    mock_dino_task = mocker.patch("orchestration.flows.bl832.nersc.nersc_segmentation_dino_task")
+    mock_dinov3_task = mocker.patch("orchestration.flows.bl832.nersc.nersc_segmentation_dinov3_task")
     mock_combine_task = mocker.patch("orchestration.flows.bl832.nersc.nersc_combine_segmentations_task")
 
     mock_sam3_task.submit.return_value = _make_future(
         mocker, {"success": True, "job_id": "1", "timing": None, "output_dir": "/out/sam3"}
     )
-    mock_dino_task.submit.return_value = _make_future(mocker, False)
+    mock_dinov3_task.submit.return_value = _make_future(mocker, False)
 
     result = nersc_petiole_segment_flow(file_path="folder/file.h5", num_nodes=4, config=None)
 
@@ -680,13 +680,13 @@ def test_petiole_segment_flow_both_seg_fail(mocker, mock_config832, mock_recon_s
     mocker.patch("orchestration.flows.bl832.nersc.get_prune_controller", return_value=mocker.MagicMock())
 
     mock_sam3_task = mocker.patch("orchestration.flows.bl832.nersc.nersc_segmentation_sam3_task")
-    mock_dino_task = mocker.patch("orchestration.flows.bl832.nersc.nersc_segmentation_dino_task")
+    mock_dinov3_task = mocker.patch("orchestration.flows.bl832.nersc.nersc_segmentation_dinov3_task")
     mock_combine_task = mocker.patch("orchestration.flows.bl832.nersc.nersc_combine_segmentations_task")
 
     mock_sam3_task.submit.return_value = _make_future(
         mocker, {"success": False, "job_id": None, "timing": None, "output_dir": None}
     )
-    mock_dino_task.submit.return_value = _make_future(mocker, False)
+    mock_dinov3_task.submit.return_value = _make_future(mocker, False)
 
     result = nersc_petiole_segment_flow(file_path="folder/file.h5", num_nodes=4, config=None)
 
