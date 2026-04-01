@@ -24,10 +24,9 @@ from orchestration.flows.bl832.streaming_mixin import (
     NerscStreamingMixin, SlurmJobBlock, cancellation_hook, monitor_streaming_job, save_block
 )
 from orchestration.mlflow import get_checkpoint_info
-from orchestration.globus.token import (
-    get_access_token,
+from orchestration.globus.get_globus_token import (
+    get_iri_access_token,
     DEFAULT_TOKEN_FILE,
-    IRI_SCOPE,
 )
 from orchestration.prefect import schedule_prefect_flow
 from orchestration.prune_controller import get_prune_controller, PruneMethod
@@ -42,17 +41,7 @@ load_dotenv()
 # Applies only to NERSCLoginMethod.IRIAPI
 _IRIAPI_GLOBUS_CLIENT_ID_ENV: str = "GLOBUS_CLIENT_ID"
 _IRI_COMPUTE_RESOURCE: str = "compute"
-_IRI_SCRATCH_RESOURCE: str = "scratch"
-# _IRIAPI_GLOBUS_CLIENT_SECRET_ENV: str = "GLOBUS_CLIENT_SECRET"  # set → confidential client
 _IRIAPI_TOKEN_FILE_ENV: str = "PATH_GLOBUS_TOKEN_FILE"
-_IRIAPI_GLOBUS_RESOURCE_SERVER: str = "auth.globus.org"
-_IRIAPI_GLOBUS_REQUIRED_SCOPES: frozenset[str] = frozenset({
-    "openid",
-    "profile",
-    "email",
-    "urn:globus:auth:scope:auth.globus.org:view_identities",
-    IRI_SCOPE,
-})
 
 _API_BASE_URLS: dict[NERSCLoginMethod, str] = {
     NERSCLoginMethod.SFAPI:  "https://api.nersc.gov/api/v1.2",
@@ -266,26 +255,19 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
             RuntimeError: If the acquired token is missing required scopes.
         """
         client_id = "fae5c579-490a-4d76-b6eb-d78f65caeb63"  # os.getenv(_IRIAPI_GLOBUS_CLIENT_ID_ENV)
-        # client_secret = os.getenv(_IRIAPI_GLOBUS_CLIENT_SECRET_ENV)
 
         if not client_id:
             raise ValueError(
                 f"Globus client ID is unset. Set {_IRIAPI_GLOBUS_CLIENT_ID_ENV}."
             )
-        # if not client_secret:
-        #     raise ValueError(
-        #         f"Globus client secret is unset. Set {_IRIAPI_GLOBUS_CLIENT_SECRET_ENV}. "
-        #         "A Globus Confidential App client is required for automated IRI API auth."
-        #     )
 
         token_file_env = os.getenv(_IRIAPI_TOKEN_FILE_ENV)
         token_file = Path(token_file_env) if token_file_env else DEFAULT_TOKEN_FILE
 
-        access_token = get_access_token(
-            client_id=client_id,
-            requested_scopes=_IRIAPI_GLOBUS_REQUIRED_SCOPES,
+        access_token = get_iri_access_token(
             token_file=token_file,
             force_login=False,
+            prompt_login=False
         )
 
         return httpx.Client(
@@ -835,43 +817,6 @@ date
         except Exception as e:
             logger.error(f"Error during multiresolution job submission or completion: {e}")
             return False
-        # try:
-        #     logger.info("Submitting Tiff to Zarr job script to Perlmutter.")
-        #     perlmutter = self.client.compute(Machine.perlmutter)
-        #     job = perlmutter.submit_job(job_script)
-        #     logger.info(f"Submitted job ID: {job.jobid}")
-
-        #     try:
-        #         job.update()
-        #     except Exception as update_err:
-        #         logger.warning(f"Initial job update failed, continuing: {update_err}")
-
-        #     time.sleep(60)
-        #     logger.info(f"Job {job.jobid} current state: {job.state}")
-
-        #     job.complete()  # Wait until the job completes
-        #     logger.info("Reconstruction job completed successfully.")
-
-        #     return True
-
-        # except Exception as e:
-        #     logger.warning(f"Error during job submission or completion: {e}")
-        #     match = re.search(r"Job not found:\s*(\d+)", str(e))
-
-        #     if match:
-        #         jobid = match.group(1)
-        #         logger.info(f"Attempting to recover job {jobid}.")
-        #         try:
-        #             job = self.client.perlmutter.job(jobid=jobid)
-        #             time.sleep(30)
-        #             job.complete()
-        #             logger.info("Reconstruction job completed successfully after recovery.")
-        #             return True
-        #         except Exception as recovery_err:
-        #             logger.error(f"Failed to recover job {jobid}: {recovery_err}")
-        #             return False
-        #     else:
-        #         return False
 
     def segmentation_sam3(
         self,
@@ -1850,7 +1795,8 @@ def nersc_recon_flow(
     logger.info(f"Starting NERSC reconstruction flow for {file_path=}")
     controller = get_controller(
         hpc_type=HPC.NERSC,
-        config=config
+        config=config,
+        login_method=NERSCLoginMethod.SFAPI
     )
     logger.info("NERSC reconstruction controller initialized")
 
@@ -2473,6 +2419,55 @@ def nersc_moon_segment_flow(
         logger.warning(
             f"Flow completed with issues: recon={nersc_reconstruction_success}, moon={moon_success}"
         )
+        return False
+
+
+@flow(name="nersc_recon_test_iriapi_flow", flow_run_name="nersc_recon-{file_path}")
+def nersc_recon_test_iriapi_flow(
+    file_path: str,
+    config: Optional[Config832] = None,
+) -> bool:
+    """
+    Perform tomography reconstruction on NERSC.
+
+    :param file_path: Path to the file to reconstruct.
+    :param config: Configuration object (if None, a default Config832 will be created).
+    :return: True if successful, False otherwise.
+    """
+    logger.info(f"Starting NERSC reconstruction flow for {file_path=}")
+    controller = get_controller(
+        hpc_type=HPC.NERSC,
+        config=config,
+        login_method=NERSCLoginMethod.IRIAPI
+    )
+    logger.info("NERSC reconstruction controller initialized")
+
+    nersc_reconstruction_success = controller.reconstruct(
+        file_path=file_path,
+    )
+    logger.info(f"NERSC reconstruction success: {nersc_reconstruction_success}")
+
+    nersc_multi_res_success = controller.build_multi_resolution(
+        file_path=file_path,
+    )
+    logger.info(f"NERSC multi-resolution success: {nersc_multi_res_success}")
+
+    path = Path(file_path)
+    folder_name = path.parent.name
+    file_name = path.stem
+
+    tiff_file_path = f"{folder_name}/rec{file_name}"
+    zarr_file_path = f"{folder_name}/rec{file_name}.zarr"
+
+    logger.info(f"{tiff_file_path=}")
+    logger.info(f"{zarr_file_path=}")
+
+    # Transfers and pruning omitted from test flow.
+
+    # TODO: Ingest into SciCat
+    if nersc_reconstruction_success:
+        return True
+    else:
         return False
 
 
