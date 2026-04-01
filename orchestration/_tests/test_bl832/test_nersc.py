@@ -211,10 +211,10 @@ def mock_iriapi_client(mocker):
 
     return client
 
-
 # ---------------------------------------------------------------------------
 # _create_sfapi_client
 # ---------------------------------------------------------------------------
+
 
 def test_create_sfapi_client_success(mocker):
     """Valid credentials produce a Client instance."""
