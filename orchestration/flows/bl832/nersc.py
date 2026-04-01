@@ -345,7 +345,6 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
         """
         logger.info("Starting NERSC reconstruction process.")
 
-        # user = self.client.user()
         username = self._get_nersc_username()
 
         raw_path = self.config.nersc832_alsdev_raw.root_path
@@ -609,7 +608,6 @@ echo "JOB_END=$(date +%s)" >> $TIMING_FILE
 
         logger.info("Starting NERSC multiresolution process.")
 
-        # user = self.client.user()
         username = self._get_nersc_username()
 
         multires_image = self.config.ghcr_images832["multires_image"]
