@@ -644,8 +644,8 @@ date
         pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
 
         opts = _load_job_options(
-            "nersc-segmentation-options",
-            self.config.nersc_segment_sam3_settings,
+            variable_name="nersc-segmentation-options",
+            config_settings=self.config.nersc_segment_sam3_settings,
             config=self.config,
             mlflow_model_name="sam3-petiole",
             mlflow_checkpoint_key="finetuned_checkpoint_path",
@@ -933,7 +933,7 @@ exit $SEG_STATUS
         spec = self._get_segmentation_spec("dinov3", project)
         opts = _load_job_options(
             variable_name=spec.variable_name,
-            settings=spec.settings,
+            config_settings=spec.settings,
             config=self.config,
             mlflow_model_name=spec.mlflow_model_name,
             mlflow_checkpoint_key=spec.mlflow_checkpoint_key,
@@ -1875,7 +1875,7 @@ def nersc_petiole_segment_flow(
         logger.info("Running segmentation combination.")
 
         combine_future = nersc_combine_segmentations_task.submit(
-            recon_folder_path=scratch_path_tiff, config=config, project="petiole"
+            recon_folder_path=scratch_path_tiff, config=config
         )
 
         combine_success = combine_future.result()
@@ -2367,15 +2367,14 @@ def nersc_segmentation_dinov3_task(
 def nersc_combine_segmentations_task(
     recon_folder_path: str,
     config: Optional[Config832] = None,
-    project: Optional[str] = None,
 ) -> bool:
     logger = get_run_logger()
     if config is None:
         logger.info("No config provided, using default Config832.")
         config = Config832()
     tomography_controller = get_controller(hpc_type=HPC.NERSC, config=config)
-    logger.info(f"Starting NERSC combine segmentations task for {recon_folder_path=}, {project=}")
-    success = tomography_controller.combine_segmentations(recon_folder_path=recon_folder_path, project=project)
+    logger.info(f"Starting NERSC combine segmentations task for {recon_folder_path=}")
+    success = tomography_controller.combine_segmentations(recon_folder_path=recon_folder_path)
     if not success:
         logger.error("Combine segmentations failed.")
     else:

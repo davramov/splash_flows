@@ -540,7 +540,7 @@ def test_nersc_segmentation_dinov3_task_success(mocker, mock_config832):
         config=mock_config832
     )
 
-    mock_controller.segmentation_dinov3.assert_called_once_with(recon_folder_path="folder/recfile")
+    mock_controller.segmentation_dinov3.assert_called_once_with(recon_folder_path="folder/recfile", project="petiole")
     assert result is True
 
 
@@ -706,3 +706,91 @@ def test_petiole_segment_flow_recon_failure(mocker, mock_config832):
 
     with pytest.raises(ValueError, match="Reconstruction at NERSC Failed"):
         nersc_petiole_segment_flow(file_path="folder/file.h5", num_nodes=4, config=None)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# nersc_moon_segment_flow  (recon + DINOv3-moon only, no SAM3, no combine)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_moon_segment_flow_succeeds(mocker, mock_config832, mock_recon_success):
+    """Recon + DINOv3-moon both succeed → flow returns True."""
+    from orchestration.flows.bl832.nersc import nersc_moon_segment_flow
+
+    mock_controller = mocker.MagicMock()
+    mock_controller.reconstruct.return_value = mock_recon_success
+    mocker.patch("orchestration.flows.bl832.nersc.get_controller", return_value=mock_controller)
+
+    mock_globus_transfer = mocker.patch("orchestration.flows.bl832.nersc.globus_transfer_task")
+    mock_globus_transfer.submit.return_value = _make_future(mocker, True)
+
+    mocker.patch("orchestration.flows.bl832.nersc.get_prune_controller", return_value=mocker.MagicMock())
+
+    mock_dinov3_task = mocker.patch("orchestration.flows.bl832.nersc.nersc_segmentation_dinov3_task")
+    mock_dinov3_task.submit.return_value = _make_future(mocker, True)
+
+    result = nersc_moon_segment_flow(file_path="folder/file.h5", num_nodes=4, config=None)
+
+    assert result is True
+    mock_controller.reconstruct.assert_called_once()
+    mock_dinov3_task.submit.assert_called_once_with(
+        recon_folder_path="folder/recfile", config=mock_config832, project="moon"
+    )
+
+
+def test_moon_segment_flow_seg_failure(mocker, mock_config832, mock_recon_success):
+    """Recon succeeds but DINOv3-moon fails → flow returns False."""
+    from orchestration.flows.bl832.nersc import nersc_moon_segment_flow
+
+    mock_controller = mocker.MagicMock()
+    mock_controller.reconstruct.return_value = mock_recon_success
+    mocker.patch("orchestration.flows.bl832.nersc.get_controller", return_value=mock_controller)
+
+    mock_globus_transfer = mocker.patch("orchestration.flows.bl832.nersc.globus_transfer_task")
+    mock_globus_transfer.submit.return_value = _make_future(mocker, False)
+
+    mocker.patch("orchestration.flows.bl832.nersc.get_prune_controller", return_value=mocker.MagicMock())
+
+    mock_dinov3_task = mocker.patch("orchestration.flows.bl832.nersc.nersc_segmentation_dinov3_task")
+    mock_dinov3_task.submit.return_value = _make_future(mocker, False)
+
+    result = nersc_moon_segment_flow(file_path="folder/file.h5", num_nodes=4, config=None)
+
+    assert result is False
+
+
+def test_moon_segment_flow_recon_failure(mocker, mock_config832):
+    """Recon failure should raise ValueError immediately."""
+    from orchestration.flows.bl832.nersc import nersc_moon_segment_flow
+
+    mock_controller = mocker.MagicMock()
+    mock_controller.reconstruct.return_value = {"success": False, "job_id": None, "timing": None}
+    mocker.patch("orchestration.flows.bl832.nersc.get_controller", return_value=mock_controller)
+    mocker.patch("orchestration.flows.bl832.nersc.globus_transfer_task")
+    mocker.patch("orchestration.flows.bl832.nersc.get_prune_controller", return_value=mocker.MagicMock())
+
+    with pytest.raises(ValueError, match="Reconstruction at NERSC failed"):
+        nersc_moon_segment_flow(file_path="folder/file.h5", num_nodes=4, config=None)
+
+
+def test_moon_segment_flow_no_sam3_no_combine(mocker, mock_config832, mock_recon_success):
+    """SAM3 and combine tasks should never be called in the moon flow."""
+    from orchestration.flows.bl832.nersc import nersc_moon_segment_flow
+
+    mock_controller = mocker.MagicMock()
+    mock_controller.reconstruct.return_value = mock_recon_success
+    mocker.patch("orchestration.flows.bl832.nersc.get_controller", return_value=mock_controller)
+
+    mock_globus_transfer = mocker.patch("orchestration.flows.bl832.nersc.globus_transfer_task")
+    mock_globus_transfer.submit.return_value = _make_future(mocker, True)
+
+    mocker.patch("orchestration.flows.bl832.nersc.get_prune_controller", return_value=mocker.MagicMock())
+
+    mock_sam3_task = mocker.patch("orchestration.flows.bl832.nersc.nersc_segmentation_sam3_task")
+    mock_combine_task = mocker.patch("orchestration.flows.bl832.nersc.nersc_combine_segmentations_task")
+    mock_dinov3_task = mocker.patch("orchestration.flows.bl832.nersc.nersc_segmentation_dinov3_task")
+    mock_dinov3_task.submit.return_value = _make_future(mocker, True)
+
+    nersc_moon_segment_flow(file_path="folder/file.h5", num_nodes=4, config=None)
+
+    mock_sam3_task.submit.assert_not_called()
+    mock_combine_task.submit.assert_not_called()
