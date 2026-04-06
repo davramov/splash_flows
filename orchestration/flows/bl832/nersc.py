@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 import datetime
 from dotenv import load_dotenv
 import json
@@ -27,6 +28,31 @@ from orchestration.prefect import schedule_prefect_flow
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 load_dotenv()
+
+
+@dataclass
+class SegmentationModelSpec:
+    """All config-resolution inputs for a single model+project combination.
+
+    Consumed by ``_load_job_options`` and the job-script builders.
+    Adding a new model or project means adding one entry to the registry —
+    nothing else changes.
+
+    :param variable_name: Prefect Variable name for runtime overrides.
+    :param settings: Config settings dict (from Config832) for base defaults.
+    :param mlflow_model_name: Registered MLflow model name.
+    :param mlflow_checkpoint_key: Config key populated from the MLflow
+        model's ``nersc_path`` tag.
+    :param output_subdir: Subdirectory written under ``seg_folder/``,
+        e.g. ``'dino'``, ``'sam3'``, ``'dino_moon'``.
+    :param extra_cli_flags: Additional flags injected into the inference
+        command, e.g. ``{'--project': 'moon'}``. Omit flags not needed.
+    """
+    variable_name: str
+    settings: dict[str, Any]
+    mlflow_model_name: str
+    mlflow_checkpoint_key: str
+    extra_cli_flags: dict[str, str] = field(default_factory=dict)
 
 
 def _load_job_options(
@@ -162,6 +188,44 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
         except Exception as e:
             logger.error(f"Failed to create NERSC client: {e}")
             raise e
+
+    def _get_segmentation_spec(self, model: str, project: str) -> SegmentationModelSpec:
+        """Return the SegmentationModelSpec for a model+project combination.
+
+        :param model: Model family, e.g. ``'dinov3'`` or ``'sam3'``.
+        :param project: Experiment project, e.g. ``'petiole'`` or ``'moon'``.
+        :return: The corresponding SegmentationModelSpec.
+        :raises ValueError: If the combination is not registered.
+        """
+        registry: dict[tuple[str, str], SegmentationModelSpec] = {
+            ("dinov3", "petiole"): SegmentationModelSpec(
+                variable_name="nersc-dinov3-seg-options",
+                settings=self.config.nersc_segment_dinov3_settings,
+                mlflow_model_name="dinov3-petiole",
+                mlflow_checkpoint_key="dino_checkpoint_path",
+            ),
+            ("dinov3", "moon"): SegmentationModelSpec(
+                variable_name="nersc-dinov3-moon-seg-options",
+                settings=self.config.nersc_segment_dinov3_moon_settings,
+                mlflow_model_name="dinov3-moon",
+                mlflow_checkpoint_key="dino_checkpoint_path",
+                extra_cli_flags={"--project": "moon"},
+            ),
+            ("sam3", "petiole"): SegmentationModelSpec(
+                variable_name="nersc-segmentation-options",
+                settings=self.config.nersc_segment_sam3_settings,
+                mlflow_model_name="sam3-petiole",
+                mlflow_checkpoint_key="finetuned_checkpoint_path",
+            ),
+            # future: ("sam3", "moon"): SegmentationModelSpec(...),
+        }
+        key = (model, project)
+        if key not in registry:
+            raise ValueError(
+                f"No segmentation spec registered for model={model!r}, project={project!r}. "
+                f"Registered combinations: {list(registry)}"
+            )
+        return registry[key]
 
     def reconstruct(
         self,
@@ -850,12 +914,14 @@ exit $SEG_STATUS
     def segmentation_dinov3(
         self,
         recon_folder_path: str = "",
+        project: str = "petiole",
     ) -> bool:
         """
         Run DINOv3 segmentation at NERSC Perlmutter via SFAPI Slurm job.
 
         :param recon_folder_path: Relative path to the reconstructed data folder,
                e.g. 'folder_name/recYYYYMMDD_hhmmss_scanname/'
+        :param project: Project name for segmentation settings.
         :return: True if the job completed successfully, False otherwise.
         """
         logger.info("Starting NERSC DINOv3 segmentation process.")
@@ -864,13 +930,17 @@ exit $SEG_STATUS
         pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
 
         # Load from config
-
+        spec = self._get_segmentation_spec("dinov3", project)
         opts = _load_job_options(
-            "nersc-dinov3-seg-options",
-            self.config.nersc_segment_dinov3_settings,
+            variable_name=spec.variable_name,
+            settings=spec.settings,
             config=self.config,
-            mlflow_model_name="dinov3-petiole",
-            mlflow_checkpoint_key="dino_checkpoint_path",
+            mlflow_model_name=spec.mlflow_model_name,
+            mlflow_checkpoint_key=spec.mlflow_checkpoint_key,
+        )
+
+        extra_flags = "\n".join(
+            f"    {flag} {value} \\" for flag, value in spec.extra_cli_flags.items()
         )
 
         cfs_path = opts["cfs_path"]
@@ -967,6 +1037,7 @@ srun --ntasks-per-node=1 --gpus-per-task=4 \\
     --output-dir "{output_dir}" \\
     --batch-size {batch_size} \\
     --finetuned-checkpoint "{dino_checkpoint}" \\
+    {extra_flags}
     --save-overlay
 
 SEG_STATUS=$?
@@ -1758,7 +1829,7 @@ def nersc_petiole_segment_flow(
         recon_folder_path=scratch_path_tiff, config=config
     )
     dinov3_future = nersc_segmentation_dinov3_task.submit(
-        recon_folder_path=scratch_path_tiff, config=config
+        recon_folder_path=scratch_path_tiff, config=config, project="petiole"
     )
 
     # ── STEP 4: Transfer each model's output as it completes ─────────────────
@@ -1804,7 +1875,7 @@ def nersc_petiole_segment_flow(
         logger.info("Running segmentation combination.")
 
         combine_future = nersc_combine_segmentations_task.submit(
-            recon_folder_path=scratch_path_tiff, config=config
+            recon_folder_path=scratch_path_tiff, config=config, project="petiole"
         )
 
         combine_success = combine_future.result()
@@ -1921,6 +1992,203 @@ def nersc_petiole_segment_flow(
         logger.warning(
             f"Flow completed with issues: recon={nersc_reconstruction_success}, "
             f"sam3={sam3_success}, dinov3={dinov3_success}"
+        )
+        return False
+
+
+@flow(name="nersc_moon_segment_flow", flow_run_name="nersc_moon_seg-{file_path}")
+def nersc_moon_segment_flow(
+    file_path: str,
+    config: Config832 | None = None,
+    num_nodes: int | None = None,
+) -> bool:
+    """Reconstruct a lunar regolith scan and run DINOv3-moon segmentation.
+
+    Runs reconstruction then DINOv3-moon (ice, particles, pores). No SAM3 or
+    combine step — those are petiole-specific. Transfer and pruning follow the
+    same pattern as nersc_petiole_segment_flow.
+
+    :param file_path: Path to the raw .h5 file to be processed.
+    :param config: Configuration object for the flow.
+    :param num_nodes: Number of nodes for reconstruction.
+    :return: True if reconstruction and segmentation both succeeded.
+    """
+    logger = get_run_logger()
+
+    if config is None:
+        logger.info("Initializing Config")
+        config = Config832()
+
+    path = Path(file_path)
+    folder_name = path.parent.name
+    file_name = path.stem
+    scratch_path_tiff = f"{folder_name}/rec{file_name}"
+    scratch_path_segment = f"{folder_name}/seg{file_name}"
+
+    logger.info(f"Starting NERSC reconstruction + DINOv3-moon flow for {file_path=}")
+
+    controller = get_controller(hpc_type=HPC.NERSC, config=config)
+
+    if num_nodes is None:
+        num_nodes = config.nersc_recon_settings.get("num_nodes", 4)
+    logger.info(f"Configured to use {num_nodes} nodes for reconstruction")
+
+    # ── STEP 1: Reconstruction ────────────────────────────────────────────────
+    recon_result = controller.reconstruct(file_path=file_path, num_nodes=num_nodes)
+
+    if isinstance(recon_result, dict):
+        nersc_reconstruction_success = recon_result.get("success", False)
+        timing = recon_result.get("timing")
+        if timing:
+            logger.info("=" * 50)
+            logger.info("TIMING BREAKDOWN")
+            logger.info("=" * 50)
+            logger.info(f"  Total job time:      {timing.get('total', 'N/A')}s")
+            logger.info(f"  Container pull:      {timing.get('container_pull', 'N/A')}s")
+            logger.info(
+                f"  File copy:           {timing.get('file_copy', 'N/A')}s "
+                f"(skipped: {timing.get('copy_skipped', 'N/A')})"
+            )
+            logger.info(f"  Metadata detection:  {timing.get('metadata', 'N/A')}s")
+            logger.info(f"  RECONSTRUCTION:      {timing.get('reconstruction', 'N/A')}s  <-- actual recon time")
+            logger.info(f"  Num slices:          {timing.get('num_slices', 'N/A')}")
+            logger.info("=" * 50)
+            if all(k in timing for k in ["total", "reconstruction"]):
+                overhead = timing["total"] - timing["reconstruction"]
+                logger.info(f"  Overhead:            {overhead}s")
+                logger.info(f"  Reconstruction %:    {100 * timing['reconstruction'] / timing['total']:.1f}%")
+            logger.info("=" * 50)
+    else:
+        nersc_reconstruction_success = recon_result
+
+    logger.info(f"NERSC reconstruction success: {nersc_reconstruction_success}")
+
+    if not nersc_reconstruction_success:
+        logger.error("Reconstruction failed — aborting moon segmentation flow.")
+        raise ValueError("Reconstruction at NERSC failed")
+
+    # ── STEP 2: Transfer TIFFs to data832 ────────────────────────────────────
+    data832_tiff_future = None
+    try:
+        data832_tiff_future = globus_transfer_task.submit(
+            file_path=scratch_path_tiff,
+            source=config.nersc832_alsdev_pscratch_scratch,
+            destination=config.data832_scratch,
+            config=config,
+        )
+        logger.info("TIFF transfer to data832 submitted.")
+    except Exception as e:
+        logger.error(f"Failed to submit TIFF transfer to data832: {e}")
+
+    # ── STEP 3: DINOv3-moon segmentation ─────────────────────────────────────
+    logger.info("Submitting DINOv3-moon segmentation task.")
+    moon_future = nersc_segmentation_dinov3_task.submit(
+        recon_folder_path=scratch_path_tiff, config=config, project="moon"
+    )
+
+    moon_success = moon_future.result()
+    logger.info(f"DINOv3-moon segmentation result: {moon_success}")
+
+    # ── STEP 4: Transfer segmentation outputs to data832 ─────────────────────
+    data832_moon_future = None
+    if moon_success:
+        moon_segment_path = f"{folder_name}/seg{file_name}/dino"
+        try:
+            data832_moon_future = globus_transfer_task.submit(
+                file_path=moon_segment_path,
+                source=config.nersc832_alsdev_pscratch_scratch,
+                destination=config.data832_scratch,
+                config=config,
+            )
+            logger.info("DINOv3-moon transfer to data832 submitted.")
+        except Exception as e:
+            logger.error(f"Failed to submit DINOv3-moon transfer to data832: {e}")
+
+    # ── STEP 5: Copy to NERSC CFS ─────────────────────────────────────────────
+    for cfs_path in [scratch_path_tiff, scratch_path_segment]:
+        try:
+            globus_transfer_task.submit(
+                file_path=cfs_path,
+                source=config.nersc832_alsdev_pscratch_scratch,
+                destination=config.nersc832_alsdev_scratch,
+                config=config,
+            )
+            logger.info(f"CFS transfer submitted: {cfs_path}")
+        except Exception as e:
+            logger.error(f"Failed to copy {cfs_path} to NERSC CFS: {e}")
+
+    # ── Resolve futures before pruning ────────────────────────────────────────
+    data832_tiff_transfer_success = data832_tiff_future.result() if data832_tiff_future else False
+    data832_moon_transfer_success = data832_moon_future.result() if data832_moon_future else False
+
+    logger.info(
+        f"Transfer results — tiff: {data832_tiff_transfer_success}, "
+        f"moon: {data832_moon_transfer_success}"
+    )
+
+    # ── STEP 6: Pruning ───────────────────────────────────────────────────────
+    logger.info("Scheduling file pruning tasks.")
+    prune_controller = get_prune_controller(prune_type=PruneMethod.GLOBUS, config=config)
+
+    try:
+        prune_controller.prune(
+            file_path=f"{folder_name}/{path.name}",
+            source_endpoint=config.nersc832_alsdev_pscratch_raw,
+            check_endpoint=None,
+            days_from_now=1.0,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to schedule raw data pruning: {e}")
+
+    try:
+        prune_controller.prune(
+            file_path=scratch_path_tiff,
+            source_endpoint=config.nersc832_alsdev_pscratch_scratch,
+            check_endpoint=config.data832_scratch if data832_tiff_transfer_success else None,
+            days_from_now=1.0,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to schedule reconstruction data pruning: {e}")
+
+    if moon_success:
+        try:
+            prune_controller.prune(
+                file_path=scratch_path_segment,
+                source_endpoint=config.nersc832_alsdev_pscratch_scratch,
+                check_endpoint=config.data832_scratch if data832_moon_transfer_success else None,
+                days_from_now=1.0,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to schedule segmentation data pruning: {e}")
+
+    if data832_tiff_transfer_success:
+        try:
+            prune_controller.prune(
+                file_path=scratch_path_tiff,
+                source_endpoint=config.data832_scratch,
+                check_endpoint=None,
+                days_from_now=30.0,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to schedule data832 tiff pruning: {e}")
+
+    if data832_moon_transfer_success:
+        try:
+            prune_controller.prune(
+                file_path=scratch_path_segment,
+                source_endpoint=config.data832_scratch,
+                check_endpoint=None,
+                days_from_now=30.0,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to schedule data832 moon segment pruning: {e}")
+
+    if nersc_reconstruction_success and moon_success:
+        logger.info("NERSC reconstruction + DINOv3-moon flow completed successfully.")
+        return True
+    else:
+        logger.warning(
+            f"Flow completed with issues: recon={nersc_reconstruction_success}, moon={moon_success}"
         )
         return False
 
@@ -2079,14 +2347,15 @@ def nersc_segmentation_sam3_task(
 def nersc_segmentation_dinov3_task(
     recon_folder_path: str,
     config: Optional[Config832] = None,
+    project: Optional[str] = "petiole",
 ) -> bool:
     logger = get_run_logger()
     if config is None:
         logger.info("No config provided, using default Config832.")
         config = Config832()
     tomography_controller = get_controller(hpc_type=HPC.NERSC, config=config)
-    logger.info(f"Starting NERSC DINOv3 segmentation task for {recon_folder_path=}")
-    success = tomography_controller.segmentation_dinov3(recon_folder_path=recon_folder_path)
+    logger.info(f"Starting NERSC DINOv3 segmentation task for {recon_folder_path=}, {project=}")
+    success = tomography_controller.segmentation_dinov3(recon_folder_path=recon_folder_path, project=project)
     if not success:
         logger.error("DINOv3 segmentation failed.")
     else:
@@ -2098,14 +2367,15 @@ def nersc_segmentation_dinov3_task(
 def nersc_combine_segmentations_task(
     recon_folder_path: str,
     config: Optional[Config832] = None,
+    project: Optional[str] = None,
 ) -> bool:
     logger = get_run_logger()
     if config is None:
         logger.info("No config provided, using default Config832.")
         config = Config832()
     tomography_controller = get_controller(hpc_type=HPC.NERSC, config=config)
-    logger.info(f"Starting NERSC combine segmentations task for {recon_folder_path=}")
-    success = tomography_controller.combine_segmentations(recon_folder_path=recon_folder_path)
+    logger.info(f"Starting NERSC combine segmentations task for {recon_folder_path=}, {project=}")
+    success = tomography_controller.combine_segmentations(recon_folder_path=recon_folder_path, project=project)
     if not success:
         logger.error("Combine segmentations failed.")
     else:
