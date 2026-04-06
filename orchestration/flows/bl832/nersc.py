@@ -579,7 +579,13 @@ date
         user = self.client.user()
         pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
 
-        opts = _load_job_options("nersc-segmentation-options", self.config.nersc_segment_sam3_settings)
+        opts = _load_job_options(
+            "nersc-segmentation-options",
+            self.config.nersc_segment_sam3_settings,
+            config=self.config,
+            mlflow_model_name="sam3-petiole",
+            mlflow_checkpoint_key="finetuned_checkpoint_path",
+        )
 
         cfs_path = opts["cfs_path"]
         conda_env_path = opts["conda_env_path"]
@@ -859,7 +865,13 @@ exit $SEG_STATUS
 
         # Load from config
 
-        opts = _load_job_options("nersc-dinov3-seg-options", self.config.nersc_segment_dinov3_settings)
+        opts = _load_job_options(
+            "nersc-dinov3-seg-options",
+            self.config.nersc_segment_dinov3_settings,
+            config=self.config,
+            mlflow_model_name="dinov3-petiole",
+            mlflow_checkpoint_key="dino_checkpoint_path",
+        )
 
         cfs_path = opts["cfs_path"]
         conda_env_path = opts["conda_env_path"]
