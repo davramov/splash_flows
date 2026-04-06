@@ -175,6 +175,7 @@ mlflow:
     registry_uri: https://mlflow-staging.computing.als.lbl.gov
 
 hpc_submission_settings832:
+  # ── RECON + MULTIRES SETTINGS ───────────────────────────────────────────────
   nersc_reconstruction:
     # ── SLURM resource allocation ─────────────────────────────────────────────
     qos: realtime
@@ -190,6 +191,8 @@ hpc_submission_settings832:
     reservation: ""
     cpus-per-task: 128
     walltime: "0:15:00"
+
+  # ── PETIOLE SEGMENTATION SETTINGS ───────────────────────────────────────────
   nersc_segmentation_sam3:
     # ── SLURM resource allocation ─────────────────────────────────────────────
     qos: regular
@@ -258,3 +261,26 @@ hpc_submission_settings832:
     cfs_path: /global/cfs/cdirs/als/data_mover/8.3.2
     conda_env_path: /global/cfs/cdirs/als/data_mover/8.3.2/envs/dino_demo
     seg_scripts_dir: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/inference_latest/forge_feb_seg_model_demo
+
+  # ── MOON SEGMENTATION SETTINGS ───────────────────────────────────────────
+  nersc_segmentation_dinov3_moon:
+    # ── SLURM resource allocation ─────────────────────────────────────────────
+    qos: regular
+    account: als
+    constraint: gpu
+    reservation: ""
+    num_nodes: 4
+    ntasks-per-node: 1
+    nproc_per_node: 4
+    gpus-per-node: 4
+    cpus-per-task: 128
+    walltime: "00:59:00"
+    # ── Inference parameters ──────────────────────────────────────────────────
+    script_name: "src.inference_dino_v2"
+    project: "moon"
+    batch_size: 4
+    # ── Paths ─────────────────────────────────────────────────────────────────
+    cfs_path: /global/cfs/cdirs/als/data_mover/8.3.2
+    conda_env_path: /global/cfs/cdirs/als/data_mover/8.3.2/envs/dino_demo
+    seg_scripts_dir: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/inference_v5_multiseg/forge_feb_seg_model_demo/
+    dino_checkpoint_path: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/dino_moon/best.ckpt

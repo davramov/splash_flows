@@ -38,3 +38,4 @@ class Config832(BeamlineConfig):
         self.nersc_segment_sam3_settings = self.config["hpc_submission_settings832"]["nersc_segmentation_sam3"]
         self.nersc_segment_dinov3_settings = self.config["hpc_submission_settings832"]["nersc_segmentation_dinov3"]
         self.nersc_combine_segmentation_settings = self.config["hpc_submission_settings832"]["nersc_combine_segmentations"]
+        self.nersc_segment_dinov3_moon_settings = self.config["hpc_submission_settings832"]["nersc_segmentation_dinov3_moon"]
