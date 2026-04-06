@@ -61,6 +61,22 @@ def register_mlflow_checkpoints():
         },
     )
 
+    register_checkpoint(
+        model_name="dinov3-moon",
+        nersc_path="/global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/dino_moon/best.ckpt",
+        alcf_path="/eagle/IRIBeta/als/seg_models/dino_moon/best.ckpt",
+        config=config,
+        alias="production",
+        description="DINOv3 fine-tuned on lunar regolith micro-CT data (ice, particles, pores).",
+        inference_params={
+            "conda_env_path": "/global/cfs/cdirs/als/data_mover/8.3.2/envs/dino_demo",
+            "seg_scripts_dir": f"{scripts_dir}inference_v5_multiseg/forge_feb_seg_model_demo/",
+            "script_name": "src.inference_dino_v2",
+            "batch_size": 4,
+            "nproc_per_node": 4,
+        },
+    )
+
 
 def retrieve_mlflow_params_test() -> bool:
     """Test that _load_job_options correctly pulls inference params from the MLflow registry.
@@ -173,6 +189,46 @@ def retrieve_mlflow_params_test() -> bool:
 
     for key, (check_fn, message) in dino_checks.items():
         value = dino_opts.get(key)
+        passed = check_fn(value) if value is not None else False
+        status = "✓" if passed else "✗"
+        logger.info(f"  [{status}] {key}={value!r}  —  {message}")
+        if not passed:
+            all_passed = False
+
+    # ── DINOv3-moon ───────────────────────────────────────────────────────────
+    logger.info("=" * 60)
+    logger.info("Testing DINOv3-moon option resolution")
+    logger.info("=" * 60)
+
+    moon_opts = _load_job_options(
+        "nersc-dinov3-moon-seg-options",
+        config.nersc_segment_dinov3_moon_settings,
+        config=config,
+        mlflow_model_name="dinov3-moon",
+        mlflow_checkpoint_key="dino_checkpoint_path",
+    )
+
+    moon_checks = {
+        "dino_checkpoint_path": (
+            lambda v: v.endswith(".ckpt"),
+            "dino_checkpoint_path should end with .ckpt"
+        ),
+        "script_name": (
+            lambda v: "v2" in v.lower(),
+            "script_name should reference inference_dino_v2"
+        ),
+        "batch_size": (
+            lambda v: isinstance(v, int) and v > 0,
+            "batch_size should be a positive int"
+        ),
+        "qos": (
+            lambda v: v == config.nersc_segment_dinov3_moon_settings["qos"],
+            "qos should be unchanged from config"
+        ),
+    }
+
+    for key, (check_fn, message) in moon_checks.items():
+        value = moon_opts.get(key)
         passed = check_fn(value) if value is not None else False
         status = "✓" if passed else "✗"
         logger.info(f"  [{status}] {key}={value!r}  —  {message}")
