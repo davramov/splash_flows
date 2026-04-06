@@ -13,6 +13,7 @@ class Config832(BeamlineConfig):
         self.apps = transfer.build_apps(self.config)
         self.tc: TransferClient = transfer.init_transfer_client(self.apps["als_transfer"])
         self.flow_client = flows.get_flows_client()
+        # Globus Endpoints
         self.spot832 = self.endpoints["spot832"]
         self.data832 = self.endpoints["data832"]
         self.data832_raw = self.endpoints["data832_raw"]
@@ -26,5 +27,12 @@ class Config832(BeamlineConfig):
         self.nersc832_alsdev_recon_scripts = self.endpoints["nersc832_alsdev_recon_scripts"]
         self.alcf832_raw = self.endpoints["alcf832_raw"]
         self.alcf832_scratch = self.endpoints["alcf832_scratch"]
+        # SciCat
         self.scicat = self.config["scicat"]
+        # NERSC HPC submission settings
         self.ghcr_images832 = self.config["ghcr_images832"]
+        self.nersc_recon_settings = self.config["hpc_submission_settings832"]["nersc_reconstruction"]
+        self.nersc_multiresolution_settings = self.config["hpc_submission_settings832"]["nersc_multiresolution"]
+        self.nersc_segment_sam3_settings = self.config["hpc_submission_settings832"]["nersc_segmentation_sam3"]
+        self.nersc_segment_dinov3_settings = self.config["hpc_submission_settings832"]["nersc_segmentation_dinov3"]
+        self.nersc_combine_segmentation_settings = self.config["hpc_submission_settings832"]["nersc_combine_segmentations"]

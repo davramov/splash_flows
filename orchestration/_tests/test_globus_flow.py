@@ -1,5 +1,6 @@
 import asyncio
 # import uuid
+from unittest.mock import MagicMock
 from uuid import UUID, uuid4, uuid5
 import warnings
 
@@ -269,7 +270,8 @@ def test_alcf_recon_flow(mocker: MockFixture):
     )
 
     mock_settings = mocker.MagicMock()
-    mock_settings.__getitem__ = lambda self, key: {"scicat": "mock_scicat", "ghcr_images832": "mock_ghcr"}[key]
+    _known_settings = {"scicat": "mock_scicat", "ghcr_images832": "mock_ghcr"}
+    mock_settings.__getitem__ = lambda self, key: _known_settings.get(key, MagicMock())
     mocker.patch(
         "orchestration.config.settings",
         mock_settings
