@@ -160,6 +160,20 @@ prefect:
 scicat:
   jobs_api_url: https://dataportal.als.lbl.gov/api/ingest/jobs
 
+mlflow:
+  local:
+    tracking_uri: http://localhost:5001
+    registry_uri: http://localhost:5001
+  dev:
+    tracking_uri: http://mlflow-dev.computing.als.lbl.gov
+    registry_uri: http://mlflow-dev.computing.als.lbl.gov
+  prod:
+    tracking_uri: https://mlflow.computing.als.lbl.gov
+    registry_uri: https://mlflow.computing.als.lbl.gov
+  staging:
+    tracking_uri: https://mlflow-staging.computing.als.lbl.gov
+    registry_uri: https://mlflow-staging.computing.als.lbl.gov
+
 hpc_submission_settings832:
   nersc_reconstruction:
     # ── SLURM resource allocation ─────────────────────────────────────────────
