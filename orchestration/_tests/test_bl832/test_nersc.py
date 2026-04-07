@@ -24,16 +24,6 @@ def prefect_test_fixture():
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def mock_config(mocker):
-    config = mocker.MagicMock()
-    config.ghcr_images832 = {
-        "recon_image": "mock_recon_image",
-        "multires_image": "mock_multires_image",
-    }
-    return config
-
-
-@pytest.fixture
 def mock_sfapi_client(mocker):
     """sfapi_client.Client mock with user, compute, submit_job, and job chained."""
     client = mocker.MagicMock()
@@ -257,9 +247,10 @@ def test_build_multi_resolution_success(mocker, mock_sfapi_client, mock_config83
 
     result = controller.build_multi_resolution(file_path="folder/file.h5")
 
-    mock_sfapi_client.compute.assert_called_once_with(Machine.perlmutter)
+    assert mock_sfapi_client.compute.call_count == 2
+    mock_sfapi_client.compute.assert_called_with(Machine.perlmutter)
     mock_sfapi_client.compute.return_value.submit_job.assert_called_once()
-    mock_sfapi_client.compute.return_value.submit_job.return_value.complete.assert_called_once()
+    mock_sfapi_client.compute.return_value.job.return_value.complete.assert_called_once()
     assert result is True
 
 
@@ -292,7 +283,7 @@ def test_segmentation_sam3_success(mocker, mock_sfapi_client, mock_config832):
 
     mock_sfapi_client.compute.assert_called_with(Machine.perlmutter)
     mock_sfapi_client.compute.return_value.submit_job.assert_called_once()
-    mock_sfapi_client.compute.return_value.submit_job.return_value.complete.assert_called_once()
+    mock_sfapi_client.compute.return_value.job.return_value.complete.assert_called_once()
     assert isinstance(result, dict)
     assert result["success"] is True
     assert result["job_id"] == "12345"
@@ -370,7 +361,7 @@ def test_segmentation_dinov3_success(mocker, mock_sfapi_client, mock_config832):
 
     mock_sfapi_client.compute.assert_called_with(Machine.perlmutter)
     mock_sfapi_client.compute.return_value.submit_job.assert_called_once()
-    mock_sfapi_client.compute.return_value.submit_job.return_value.complete.assert_called_once()
+    mock_sfapi_client.compute.return_value.job.return_value.complete.assert_called_once()
     assert result is True
 
 
@@ -454,11 +445,15 @@ def test_reconstruct_iriapi_success(mocker, mock_iriapi_client, mock_config832, 
     assert result["success"] is True
     assert result["job_id"] == "99999"
     mock_iriapi_client.post.assert_called_once()
-    assert mock_iriapi_client.post.call_args.args[0] == "/api/v1/compute/job/perlmutter"
-    assert "script" in mock_iriapi_client.post.call_args.kwargs["json"]
+    assert mock_iriapi_client.post.call_args.args[0] == "/api/v1/compute/job/compute"
+    posted_json = mock_iriapi_client.post.call_args.kwargs["json"]
+    assert posted_json["executable"] == "/bin/bash"
+    assert posted_json["arguments"][0] == "-c"
+    assert isinstance(posted_json["arguments"][1], str)  # the script body
+    assert "tomo_recon" in posted_json["arguments"][1]   # sanity check it's the right script
     assert mock_iriapi_client.get.call_count == 2
     mock_iriapi_client.get.assert_any_call(
-        "/api/v1/compute/status/perlmutter/99999"
+        "/api/v1/compute/status/compute/99999"
     )
     mock_iriapi_client.get.assert_any_call(
         "/api/v1/filesystem/file/perlmutter",
@@ -589,7 +584,7 @@ def test_combine_segmentations_success(mocker, mock_sfapi_client, mock_config832
 
     mock_sfapi_client.compute.assert_called_with(Machine.perlmutter)
     mock_sfapi_client.compute.return_value.submit_job.assert_called_once()
-    mock_sfapi_client.compute.return_value.submit_job.return_value.complete.assert_called_once()
+    mock_sfapi_client.compute.return_value.job.return_value.complete.assert_called_once()
     assert result is True
 
 
@@ -952,7 +947,7 @@ def test_moon_segment_flow_no_sam3_no_combine(mocker, mock_config832, mock_recon
 # ---------------------------------------------------------------------------
 
 
-def test_build_multi_resolution_iriapi_success(mocker, mock_iriapi_client, mock_config, monkeypatch):
+def test_build_multi_resolution_iriapi_success(mocker, mock_iriapi_client, mock_config832, monkeypatch):
     """IRIAPI build_multi_resolution POSTs and polls successfully."""
     from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
 
@@ -961,7 +956,7 @@ def test_build_multi_resolution_iriapi_success(mocker, mock_iriapi_client, mock_
 
     controller = NERSCTomographyHPCController(
         client=mock_iriapi_client,
-        config=mock_config,
+        config=mock_config832,
         login_method=NERSCLoginMethod.IRIAPI,
     )
 
@@ -974,7 +969,7 @@ def test_build_multi_resolution_iriapi_success(mocker, mock_iriapi_client, mock_
     )
 
 
-def test_build_multi_resolution_iriapi_failure(mocker, mock_iriapi_client, mock_config, monkeypatch):
+def test_build_multi_resolution_iriapi_failure(mocker, mock_iriapi_client, mock_config832, monkeypatch):
     """IRIAPI build_multi_resolution returns False when job state is failed."""
     from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
 
@@ -984,7 +979,7 @@ def test_build_multi_resolution_iriapi_failure(mocker, mock_iriapi_client, mock_
 
     controller = NERSCTomographyHPCController(
         client=mock_iriapi_client,
-        config=mock_config,
+        config=mock_config832,
         login_method=NERSCLoginMethod.IRIAPI,
     )
 

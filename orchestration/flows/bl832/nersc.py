@@ -462,6 +462,55 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
         else:
             raise ValueError(f"Unhandled NERSCLoginMethod: {self.login_method}")
 
+    def _mkdir_remote(self, path: str) -> None:
+        """Create a directory on Perlmutter remotely.
+
+        Args:
+            path: Absolute path to create.
+        """
+        if self.login_method is NERSCLoginMethod.SFAPI:
+            perlmutter = self.client.compute(Machine.perlmutter)
+            perlmutter.run(f"mkdir -p {path}")
+        elif self.login_method is NERSCLoginMethod.IRIAPI:
+            response = self.client.post(
+                "/api/v1/filesystem/mkdir/perlmutter",
+                json={"path": path, "parents": True},
+            )
+            response.raise_for_status()
+        else:
+            raise ValueError(f"Unhandled NERSCLoginMethod: {self.login_method}")
+
+    def _read_remote_file(self, path: str) -> str:
+        """Read a remote file on Perlmutter and return its contents.
+
+        Args:
+            path: Absolute path to the file on Perlmutter.
+
+        Returns:
+            File contents as a string.
+        """
+        if self.login_method is NERSCLoginMethod.SFAPI:
+            perlmutter = self.client.compute(Machine.perlmutter)
+            result = perlmutter.run(f"cat {path}")
+            if isinstance(result, str):
+                return result
+            elif hasattr(result, 'output'):
+                return result.output
+            elif hasattr(result, 'stdout'):
+                return result.stdout
+            return str(result)
+
+        elif self.login_method is NERSCLoginMethod.IRIAPI:
+            response = self.client.get(
+                "/api/v1/filesystem/file/perlmutter",
+                params={"path": path},
+            )
+            response.raise_for_status()
+            return response.text
+
+        else:
+            raise ValueError(f"Unhandled NERSCLoginMethod: {self.login_method}")
+
     def reconstruct(
         self,
         file_path: str = "",
@@ -663,27 +712,7 @@ echo "JOB_END=$(date +%s)" >> $TIMING_FILE
         timing_file = f"{pscratch_path}/tomo_recon_logs/timing_{job_id}.txt"
 
         try:
-            # Use SFAPI to read the timing file
-            if self.login_method is NERSCLoginMethod.SFAPI:
-                perlmutter = self.client.compute(Machine.perlmutter)
-                result = perlmutter.run(f"cat {timing_file}")
-
-                # result might be a string directly, or an object with .output
-                if isinstance(result, str):
-                    output = result
-                elif hasattr(result, 'output'):
-                    output = result.output
-                elif hasattr(result, 'stdout'):
-                    output = result.stdout
-                else:
-                    output = str(result)
-            elif self.login_method is NERSCLoginMethod.IRIAPI:
-                response = self.client.get(
-                    "/api/v1/filesystem/file/perlmutter",
-                    params={"path": timing_file},
-                )
-                response.raise_for_status()
-                output = response.text
+            output = self._read_remote_file(timing_file)
 
             logger.info(f"Timing file contents:\n{output}")
 
@@ -826,8 +855,8 @@ date
         """
         logger.info("Starting NERSC segmentation process (inference_v6).")
 
-        user = self.client.user()
-        pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
+        username = self._get_nersc_username()
+        pscratch_path = f"/pscratch/sd/{username[0]}/{username}"
 
         opts = _load_job_options(
             variable_name="nersc-segmentation-options",
@@ -1017,34 +1046,21 @@ exit $SEG_STATUS
 """
 
         try:
-            logger.info("Submitting segmentation job to Perlmutter (v6).")
-            perlmutter = self.client.compute(Machine.perlmutter)
+            logger.info("Submitting segmentation job to Perlmutter.")
 
             # Ensure directories exist
             logger.info("Creating necessary directories...")
-            perlmutter.run(f"mkdir -p {pscratch_path}/tomo_seg_logs")
-            perlmutter.run(f"mkdir -p {output_dir}")
+            self._mkdir_remote(f"{pscratch_path}/tomo_seg_logs")
+            self._mkdir_remote(output_dir)
 
             # Submit job
-            job = perlmutter.submit_job(job_script)
-            logger.info(f"Submitted job ID: {job.jobid}")
-
-            # Initial update
-            try:
-                job.update()
-            except Exception as update_err:
-                logger.warning(f"Initial job update failed, continuing: {update_err}")
-
-            # Wait briefly before polling
+            job_id = self._submit_job(job_script)
+            logger.info(f"Submitted job ID: {job_id}")
             time.sleep(60)
-            logger.info(f"Job {job.jobid} current state: {job.state}")
-
-            # Wait for completion
-            job.complete()
+            success = self._wait_for_job(job_id)
             logger.info("Segmentation job completed successfully.")
 
-            # Fetch timing data from output file
-            timing = self._fetch_seg_timing_from_output(perlmutter, pscratch_path, job.jobid, job_name)
+            timing = self._fetch_seg_timing_from_output(pscratch_path, job_id, job_name)
 
             if timing:
                 logger.info("=" * 60)
@@ -1058,43 +1074,21 @@ exit $SEG_STATUS
                 logger.info("=" * 60)
 
             return {
-                "success": True,
-                "job_id": job.jobid,
+                "success": success,
+                "job_id": job_id,
                 "timing": timing,
-                "output_dir": output_dir
+                "output_dir": output_dir,
             }
 
         except Exception as e:
             logger.error(f"Error during segmentation job: {e}")
             import traceback
             logger.error(traceback.format_exc())
-
-            # Attempt recovery
-            match = re.search(r"Job not found:\s*(\d+)", str(e))
-            if match:
-                jobid = match.group(1)
-                logger.info(f"Attempting to recover job {jobid}.")
-                try:
-                    job = self.client.compute(Machine.perlmutter).job(jobid=jobid)
-                    time.sleep(30)
-                    job.complete()
-                    logger.info("Segmentation job completed after recovery.")
-
-                    timing = self._fetch_seg_timing_from_output(perlmutter, pscratch_path, jobid, job_name)
-                    return {
-                        "success": True,
-                        "job_id": jobid,
-                        "timing": timing,
-                        "output_dir": output_dir
-                    }
-                except Exception as recovery_err:
-                    logger.error(f"Failed to recover job {jobid}: {recovery_err}")
-
             return {
                 "success": False,
                 "job_id": None,
                 "timing": None,
-                "output_dir": None
+                "output_dir": None,
             }
 
     def segmentation_dinov3(
@@ -1112,8 +1106,8 @@ exit $SEG_STATUS
         """
         logger.info("Starting NERSC DINOv3 segmentation process.")
 
-        user = self.client.user()
-        pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
+        username = self._get_nersc_username()
+        pscratch_path = f"/pscratch/sd/{username[0]}/{username}"
 
         # Load from config
         spec = self._get_segmentation_spec("dinov3", project)
@@ -1248,39 +1242,15 @@ exit $SEG_STATUS
 """
         try:
             logger.info("Submitting DINOv3 segmentation job to Perlmutter.")
-            perlmutter = self.client.compute(Machine.perlmutter)
-            job = perlmutter.submit_job(job_script)
-            logger.info(f"Submitted job ID: {job.jobid}")
-
-            try:
-                job.update()
-            except Exception as update_err:
-                logger.warning(f"Initial job update failed, continuing: {update_err}")
-
+            job_id = self._submit_job(job_script)
+            logger.info(f"Submitted job ID: {job_id}")
             time.sleep(60)
-            logger.info(f"Job {job.jobid} current state: {job.state}")
-
-            job.complete()
-            logger.info("DINOv3 segmentation job completed successfully.")
-            return True
-
+            success = self._wait_for_job(job_id)
+            logger.info(f"DINOv3 segmentation job {'completed successfully' if success else 'failed'}.")
+            return success
         except Exception as e:
             logger.error(f"Error during DINOv3 segmentation job submission or completion: {e}")
-            match = re.search(r"Job not found:\s*(\d+)", str(e))
-            if match:
-                jobid = match.group(1)
-                logger.info(f"Attempting to recover job {jobid}.")
-                try:
-                    job = self.client.compute(Machine.perlmutter).job(jobid=jobid)
-                    time.sleep(30)
-                    job.complete()
-                    logger.info("DINOv3 segmentation job completed successfully after recovery.")
-                    return True
-                except Exception as recovery_err:
-                    logger.error(f"Failed to recover job {jobid}: {recovery_err}")
-                    return False
-            else:
-                return False
+            return False
 
     def combine_segmentations(
         self,
@@ -1288,7 +1258,7 @@ exit $SEG_STATUS
     ) -> bool:
         """
         Run CPU-based combination of SAM3+DINOv3 segmentation results
-        at NERSC Perlmutter via SFAPI Slurm job.
+        at NERSC Perlmutter via Slurm job.
 
         :param recon_folder_path: Relative path to the reconstructed data folder,
                e.g. 'folder_name/recYYYYMMDD_hhmmss_scanname/'
@@ -1296,8 +1266,8 @@ exit $SEG_STATUS
         """
         logger.info("Starting NERSC segmentation combination process.")
 
-        user = self.client.user()
-        pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
+        username = self._get_nersc_username()
+        pscratch_path = f"/pscratch/sd/{username[0]}/{username}"
 
         opts = _load_job_options(
             "nersc-combine-seg-options", self.config.nersc_combine_segmentation_settings
@@ -1396,45 +1366,20 @@ exit 0
 """
         try:
             logger.info("Submitting segmentation combination job to Perlmutter.")
-            perlmutter = self.client.compute(Machine.perlmutter)
-            job = perlmutter.submit_job(job_script)
-            logger.info(f"Submitted job ID: {job.jobid}")
-
-            try:
-                job.update()
-            except Exception as update_err:
-                logger.warning(f"Initial job update failed, continuing: {update_err}")
-
+            job_id = self._submit_job(job_script)
+            logger.info(f"Submitted job ID: {job_id}")
             time.sleep(60)
-            logger.info(f"Job {job.jobid} current state: {job.state}")
-
-            job.complete()
-            logger.info("Segmentation combination job completed successfully.")
-            return True
-
+            success = self._wait_for_job(job_id)
+            logger.info(f"Segmentation combination job {'completed successfully' if success else 'failed'}.")
+            return success
         except Exception as e:
             logger.error(f"Error during segmentation combination job submission or completion: {e}")
-            match = re.search(r"Job not found:\s*(\d+)", str(e))
-            if match:
-                jobid = match.group(1)
-                logger.info(f"Attempting to recover job {jobid}.")
-                try:
-                    job = self.client.compute(Machine.perlmutter).job(jobid=jobid)
-                    time.sleep(30)
-                    job.complete()
-                    logger.info("Segmentation combination job completed successfully after recovery.")
-                    return True
-                except Exception as recovery_err:
-                    logger.error(f"Failed to recover job {jobid}: {recovery_err}")
-                    return False
-            else:
-                return False
+            return False
 
-    def _fetch_seg_timing_from_output(self, perlmutter, pscratch_path: str, job_id: str, job_name: str) -> dict:
+    def _fetch_seg_timing_from_output(self, pscratch_path: str, job_id: str, job_name: str) -> dict:
         """
         Fetch and parse timing data from the SLURM output file.
 
-        :param perlmutter: SFAPI compute object for Perlmutter
         :param pscratch_path: Path to the user's pscratch directory
         :param job_id: SLURM job ID
         :param job_name: Job name for finding output file
@@ -1443,18 +1388,7 @@ exit 0
         output_file = f"{pscratch_path}/tomo_seg_logs/{job_name}_{job_id}.out"
 
         try:
-            # Use SFAPI to read the output file
-            result = perlmutter.run(f"cat {output_file}")
-
-            # Handle different result types
-            if isinstance(result, str):
-                output = result
-            elif hasattr(result, 'output'):
-                output = result.output
-            elif hasattr(result, 'stdout'):
-                output = result.stdout
-            else:
-                output = str(result)
+            output = self._read_remote_file(output_file)
 
             logger.info("Job output file contents (last 50 lines):")
             lines = output.strip().split('\n')
@@ -1531,8 +1465,8 @@ exit 0
         """
         logger.info("Starting Shifter image pull.")
 
-        user = self.client.user()
-        pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
+        username = self._get_nersc_username()
+        pscratch_path = f"/pscratch/sd/{username[0]}/{username}"
 
         if image is None:
             image = self.config.ghcr_images832["recon_image"]
@@ -1579,24 +1513,16 @@ echo "Completed at $(date)"
 
         try:
             logger.info("Submitting Shifter image pull job to Perlmutter.")
-            perlmutter = self.client.compute(Machine.perlmutter)
-            job = perlmutter.submit_job(job_script)
-            logger.info(f"Submitted job ID: {job.jobid}")
+            job_id = self._submit_job(job_script)
+            logger.info(f"Submitted job ID: {job_id}")
 
             if wait:
-                try:
-                    job.update()
-                except Exception as update_err:
-                    logger.warning(f"Initial job update failed, continuing: {update_err}")
-
                 time.sleep(30)
-                logger.info(f"Job {job.jobid} current state: {job.state}")
-
-                job.complete()
-                logger.info("Shifter image pull completed successfully.")
-                return True
+                success = self._wait_for_job(job_id)
+                logger.info(f"Shifter image pull {'completed successfully' if success else 'failed'}.")
+                return success
             else:
-                logger.info(f"Job submitted. Check status with job ID: {job.jobid}")
+                logger.info(f"Job submitted. Check status with job ID: {job_id}")
                 return True
 
         except Exception as e:
@@ -1619,17 +1545,31 @@ echo "Completed at $(date)"
             image = self.config.ghcr_images832["recon_image"]
 
         try:
-            perlmutter = self.client.compute(Machine.perlmutter)
-
             # Run shifterimg images command
-            result = perlmutter.run(f"shifterimg images | grep -E \"$(echo {image} | sed 's/:/.*/g')\"")
+            if self.login_method is NERSCLoginMethod.SFAPI:
+                # synchronous via utilities/command
+                perlmutter = self.client.compute(Machine.perlmutter)
+                result = perlmutter.run(f"shifterimg images | grep -E \"$(echo {image} | sed 's/:/.*/g')\"")
+                output = result if isinstance(result, str) else getattr(result, 'output', str(result))
 
-            if isinstance(result, str):
-                output = result
-            elif hasattr(result, 'output'):
-                output = result.output
-            else:
-                output = str(result)
+            elif self.login_method is NERSCLoginMethod.IRIAPI:
+                # async: submit job → wait → read stdout file
+                username = self._get_nersc_username()
+                pscratch_path = f"/pscratch/sd/{username[0]}/{username}"
+                output_file = f"{pscratch_path}/tomo_recon_logs/shifter_check.txt"
+                check_script = f"""#!/bin/bash
+            #SBATCH -q debug
+            #SBATCH -A als
+            #SBATCH -C cpu
+            #SBATCH -N 1
+            #SBATCH --ntasks=1
+            #SBATCH --cpus-per-task=1
+            #SBATCH --time=0:05:00
+            shifterimg images | grep -E "$(echo {image} | sed 's/:/.*/g')" > {output_file} 2>&1 || true
+            """
+                job_id = self._submit_job(check_script)
+                self._wait_for_job(job_id)
+                output = self._read_remote_file(output_file)
 
             if output.strip():
                 logger.info(f"Image found in Shifter cache: {output.strip()}")
