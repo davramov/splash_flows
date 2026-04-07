@@ -282,5 +282,5 @@ hpc_submission_settings832:
     # ── Paths ─────────────────────────────────────────────────────────────────
     cfs_path: /global/cfs/cdirs/als/data_mover/8.3.2
     conda_env_path: /global/cfs/cdirs/als/data_mover/8.3.2/envs/dino_demo
-    seg_scripts_dir: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/inference_v5_multiseg/forge_feb_seg_model_demo/
-    dino_checkpoint_path: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/dino_moon/best.ckpt
+    seg_scripts_dir: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/moon_seg/forge_feb_seg_model_demo/
+    dino_checkpoint_path: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/dino/best_moon.ckpt
