@@ -24,16 +24,6 @@ def prefect_test_fixture():
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def mock_config(mocker):
-    config = mocker.MagicMock()
-    config.ghcr_images832 = {
-        "recon_image": "mock_recon_image",
-        "multires_image": "mock_multires_image",
-    }
-    return config
-
-
-@pytest.fixture
 def mock_sfapi_client(mocker):
     """sfapi_client.Client mock with user, compute, submit_job, and job chained."""
     client = mocker.MagicMock()
