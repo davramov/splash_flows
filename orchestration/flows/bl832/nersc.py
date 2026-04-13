@@ -2742,6 +2742,7 @@ def nersc_segmentation_sam3_integration_test() -> bool:
     flow_success = nersc_segmentation_sam3_task(
         recon_folder_path=recon_folder_path,
         config=Config832(),
+        login_method=NERSCLoginMethod.IRIAPI
     )
     logger.info(f"Flow success: {flow_success}")
     return flow_success
