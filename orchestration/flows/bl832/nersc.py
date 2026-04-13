@@ -1890,6 +1890,7 @@ def nersc_petiole_segment_flow(
     file_path: str,
     config: Optional[Config832] = None,
     num_nodes: Optional[int] = None,
+    login_method: Optional[NERSCLoginMethod] = NERSCLoginMethod.IRIAPI
 ) -> bool:
     """
     Transfer raw data to NERSC, run reconstruction, then run SAM3 and DINOv3
@@ -1940,6 +1941,7 @@ def nersc_petiole_segment_flow(
         file_path=file_path,
         num_nodes=num_nodes,
         config=config,
+        login_method=login_method
     )
 
     if isinstance(recon_result, dict):
@@ -1993,10 +1995,10 @@ def nersc_petiole_segment_flow(
     logger.info("Submitting SAM3 and DINOv3 segmentation tasks concurrently.")
 
     sam3_future = nersc_segmentation_sam3_task.submit(
-        recon_folder_path=scratch_path_tiff, config=config
+        recon_folder_path=scratch_path_tiff, config=config, login_method=login_method
     )
     dinov3_future = nersc_segmentation_dinov3_task.submit(
-        recon_folder_path=scratch_path_tiff, config=config, project="petiole"
+        recon_folder_path=scratch_path_tiff, config=config, project="petiole", login_method=login_method
     )
 
     # ── STEP 4: Transfer each model's output as it completes ─────────────────
@@ -2042,7 +2044,7 @@ def nersc_petiole_segment_flow(
         logger.info("Running segmentation combination.")
 
         combine_future = nersc_combine_segmentations_task.submit(
-            recon_folder_path=scratch_path_tiff, config=config
+            recon_folder_path=scratch_path_tiff, config=config, login_method=login_method
         )
 
         combine_success = combine_future.result()
@@ -2475,6 +2477,7 @@ def nersc_reconstruction_task(
     file_path: str,
     num_nodes: int = 4,
     config: Optional[Config832] = None,
+    login_method: Optional[NERSCLoginMethod] = NERSCLoginMethod.IRIAPI
 ) -> dict:
     """
     Run tomography reconstruction at NERSC Perlmutter.
@@ -2489,7 +2492,7 @@ def nersc_reconstruction_task(
         config = Config832()
 
     logger.info("Initializing NERSC Tomography HPC Controller.")
-    controller = get_controller(hpc_type=HPC.NERSC, config=config)
+    controller = get_controller(hpc_type=HPC.NERSC, config=config, login_method=login_method)
     logger.info(f"Starting NERSC reconstruction task for {file_path=}")
     return controller.reconstruct(file_path=file_path, num_nodes=num_nodes)
 
@@ -2498,6 +2501,7 @@ def nersc_reconstruction_task(
 def nersc_multiresolution_task(
     file_path: str,
     config: Optional[Config832] = None,
+    login_method: Optional[NERSCLoginMethod] = NERSCLoginMethod.IRIAPI
 ) -> bool:
     """
     Run multiresolution task at NERSC.
@@ -2515,7 +2519,8 @@ def nersc_multiresolution_task(
     logger.info("Initializing NERSC Tomography HPC Controller.")
     tomography_controller = get_controller(
         hpc_type=HPC.NERSC,
-        config=config
+        config=config,
+        login_method=login_method
     )
     logger.info(f"Starting NERSC multiresolution task for {file_path=}")
     nersc_multiresolution_success = tomography_controller.build_multi_resolution(
@@ -2550,6 +2555,7 @@ def nersc_multiresolution_integration_test() -> bool:
 def nersc_segmentation_sam3_task(
     recon_folder_path: str,
     config: Optional[Config832] = None,
+    login_method: Optional[NERSCLoginMethod] = NERSCLoginMethod.IRIAPI
 ) -> bool:
     """
     Run segmentation task at NERSC.
@@ -2567,7 +2573,8 @@ def nersc_segmentation_sam3_task(
     logger.info("Initializing NERSC Tomography HPC Controller.")
     tomography_controller = get_controller(
         hpc_type=HPC.NERSC,
-        config=config
+        config=config,
+        login_method=login_method
     )
     logger.info(f"Starting NERSC segmentation task for {recon_folder_path=}")
     nersc_segmentation_success = tomography_controller.segmentation_sam3(
@@ -2588,12 +2595,13 @@ def nersc_segmentation_dinov3_task(
     recon_folder_path: str,
     config: Optional[Config832] = None,
     project: Optional[str] = "petiole",
+    login_method: Optional[NERSCLoginMethod] = NERSCLoginMethod.IRIAPI
 ) -> bool:
     logger = get_run_logger()
     if config is None:
         logger.info("No config provided, using default Config832.")
         config = Config832()
-    tomography_controller = get_controller(hpc_type=HPC.NERSC, config=config)
+    tomography_controller = get_controller(hpc_type=HPC.NERSC, config=config, login_method=login_method)
     logger.info(f"Starting NERSC DINOv3 segmentation task for {recon_folder_path=}, {project=}")
     success = tomography_controller.segmentation_dinov3(recon_folder_path=recon_folder_path, project=project)
     if not success:
@@ -2607,12 +2615,13 @@ def nersc_segmentation_dinov3_task(
 def nersc_combine_segmentations_task(
     recon_folder_path: str,
     config: Optional[Config832] = None,
+    login_method: Optional[NERSCLoginMethod] = NERSCLoginMethod.IRIAPI
 ) -> bool:
     logger = get_run_logger()
     if config is None:
         logger.info("No config provided, using default Config832.")
         config = Config832()
-    tomography_controller = get_controller(hpc_type=HPC.NERSC, config=config)
+    tomography_controller = get_controller(hpc_type=HPC.NERSC, config=config, login_method=login_method)
     logger.info(f"Starting NERSC combine segmentations task for {recon_folder_path=}")
     success = tomography_controller.combine_segmentations(recon_folder_path=recon_folder_path)
     if not success:
@@ -2634,7 +2643,8 @@ def nersc_segmentation_sam3_integration_test() -> bool:
     recon_folder_path = 'synaps-i/rec20211222_125057_petiole4'  # 'test'  #
     flow_success = nersc_segmentation_sam3_task(
         recon_folder_path=recon_folder_path,
-        config=Config832()
+        config=Config832(),
+        login_method=NERSCLoginMethod.IRIAPI
     )
     logger.info(f"Flow success: {flow_success}")
     return flow_success
