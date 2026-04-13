@@ -1727,8 +1727,6 @@ def nersc_petiole_segment_flow(
         transfer_type=CopyMethod.GLOBUS,
         config=config
     )
-    controller = get_controller(hpc_type=HPC.NERSC, config=config)
-    logger.info("NERSC controller initialized")
 
     if num_nodes is None:
         num_nodes = config.nersc_recon_settings.get("num_nodes", 4)
@@ -1744,9 +1742,10 @@ def nersc_petiole_segment_flow(
 
     # ── STEP 1: Multinode Reconstruction ─────────────────────────────────────
     logger.info(f"Using multi-node reconstruction with {num_nodes} nodes")
-    recon_result = controller.reconstruct(
+    recon_result = nersc_reconstruction_task(
         file_path=file_path,
-        num_nodes=num_nodes
+        num_nodes=num_nodes,
+        config=config,
     )
 
     if isinstance(recon_result, dict):
@@ -2065,6 +2064,30 @@ def pull_shifter_image_flow(
     logger.info(f"Shifter image pull success: {success}")
 
     return success
+
+
+@task(name="nersc_reconstruction_task")
+def nersc_reconstruction_task(
+    file_path: str,
+    num_nodes: int = 4,
+    config: Optional[Config832] = None,
+) -> dict:
+    """
+    Run tomography reconstruction at NERSC Perlmutter.
+
+    :param file_path: Path to the raw HDF5 file to reconstruct.
+    :param num_nodes: Number of nodes to use for reconstruction.
+    :param config: Configuration object for the flow.
+    :return: Dict with keys 'success', 'job_id', 'timing'.
+    """
+    logger = get_run_logger()
+    if config is None:
+        config = Config832()
+
+    logger.info("Initializing NERSC Tomography HPC Controller.")
+    controller = get_controller(hpc_type=HPC.NERSC, config=config)
+    logger.info(f"Starting NERSC reconstruction task for {file_path=}")
+    return controller.reconstruct(file_path=file_path, num_nodes=num_nodes)
 
 
 @task(name="nersc_multiresolution_task")
