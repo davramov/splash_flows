@@ -2090,67 +2090,67 @@ def nersc_petiole_segment_flow(
     )
 
     # ── STEP 6: Pruning ───────────────────────────────────────────────────────
-    logger.info("Scheduling file pruning tasks.")
-    prune_controller = get_prune_controller(prune_type=PruneMethod.GLOBUS, config=config)
+    # logger.info("Scheduling file pruning tasks.")
+    # prune_controller = get_prune_controller(prune_type=PruneMethod.GLOBUS, config=config)
 
-    try:
-        prune_controller.prune(
-            file_path=f"{folder_name}/{path.name}",
-            source_endpoint=config.nersc832_alsdev_pscratch_raw,
-            check_endpoint=None,
-            days_from_now=1.0
-        )
-    except Exception as e:
-        logger.warning(f"Failed to schedule raw data pruning: {e}")
+    # try:
+    #     prune_controller.prune(
+    #         file_path=f"{folder_name}/{path.name}",
+    #         source_endpoint=config.nersc832_alsdev_pscratch_raw,
+    #         check_endpoint=None,
+    #         days_from_now=1.0
+    #     )
+    # except Exception as e:
+    #     logger.warning(f"Failed to schedule raw data pruning: {e}")
 
-    if nersc_reconstruction_success:
-        try:
-            prune_controller.prune(
-                file_path=scratch_path_tiff,
-                source_endpoint=config.nersc832_alsdev_pscratch_scratch,
-                check_endpoint=config.data832_scratch if data832_tiff_transfer_success else None,
-                days_from_now=1.0
-            )
-        except Exception as e:
-            logger.warning(f"Failed to schedule reconstruction data pruning: {e}")
+    # if nersc_reconstruction_success:
+    #     try:
+    #         prune_controller.prune(
+    #             file_path=scratch_path_tiff,
+    #             source_endpoint=config.nersc832_alsdev_pscratch_scratch,
+    #             check_endpoint=config.data832_scratch if data832_tiff_transfer_success else None,
+    #             days_from_now=1.0
+    #         )
+    #     except Exception as e:
+    #         logger.warning(f"Failed to schedule reconstruction data pruning: {e}")
 
-    if any_seg_success:
-        try:
-            prune_controller.prune(
-                file_path=scratch_path_segment,
-                source_endpoint=config.nersc832_alsdev_pscratch_scratch,
-                check_endpoint=config.data832_scratch if any([
-                    data832_sam3_transfer_success,
-                    data832_dinov3_transfer_success,
-                ]) else None,
-                days_from_now=1.0
-            )
-        except Exception as e:
-            logger.warning(f"Failed to schedule segmentation data pruning: {e}")
+    # if any_seg_success:
+    #     try:
+    #         prune_controller.prune(
+    #             file_path=scratch_path_segment,
+    #             source_endpoint=config.nersc832_alsdev_pscratch_scratch,
+    #             check_endpoint=config.data832_scratch if any([
+    #                 data832_sam3_transfer_success,
+    #                 data832_dinov3_transfer_success,
+    #             ]) else None,
+    #             days_from_now=1.0
+    #         )
+    #     except Exception as e:
+    #         logger.warning(f"Failed to schedule segmentation data pruning: {e}")
 
-    if data832_tiff_transfer_success:
-        try:
-            prune_controller.prune(
-                file_path=scratch_path_tiff,
-                source_endpoint=config.data832_scratch,
-                check_endpoint=None,
-                days_from_now=30.0
-            )
-        except Exception as e:
-            logger.warning(f"Failed to schedule data832 tiff pruning: {e}")
+    # if data832_tiff_transfer_success:
+    #     try:
+    #         prune_controller.prune(
+    #             file_path=scratch_path_tiff,
+    #             source_endpoint=config.data832_scratch,
+    #             check_endpoint=None,
+    #             days_from_now=30.0
+    #         )
+    #     except Exception as e:
+    #         logger.warning(f"Failed to schedule data832 tiff pruning: {e}")
 
-    if any([data832_sam3_transfer_success,
-            data832_dinov3_transfer_success,
-            data832_combined_transfer_success]):
-        try:
-            prune_controller.prune(
-                file_path=scratch_path_segment,
-                source_endpoint=config.data832_scratch,
-                check_endpoint=None,
-                days_from_now=30.0
-            )
-        except Exception as e:
-            logger.warning(f"Failed to schedule data832 segment pruning: {e}")
+    # if any([data832_sam3_transfer_success,
+    #         data832_dinov3_transfer_success,
+    #         data832_combined_transfer_success]):
+    #     try:
+    #         prune_controller.prune(
+    #             file_path=scratch_path_segment,
+    #             source_endpoint=config.data832_scratch,
+    #             check_endpoint=None,
+    #             days_from_now=30.0
+    #         )
+    #     except Exception as e:
+    #         logger.warning(f"Failed to schedule data832 segment pruning: {e}")
 
     if nersc_reconstruction_success and any_seg_success:
         logger.info("NERSC reconstruction + multi-segmentation flow completed successfully.")
