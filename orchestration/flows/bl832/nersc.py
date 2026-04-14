@@ -259,8 +259,23 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
             return str(job.jobid)
 
         elif self.login_method is NERSCLoginMethod.IRIAPI:
-            username = self._get_nersc_username()
-            pscratch_path = f"/pscratch/sd/{username[0]}/{username}"
+            # Parse SBATCH directives before stripping them
+            sbatch_values = {}
+            for line in job_script.splitlines():
+                if line.startswith("#SBATCH"):
+                    if "-q " in line:
+                        sbatch_values["queue_name"] = line.split("-q ")[-1].strip()
+                    elif "-A " in line:
+                        sbatch_values["account"] = line.split("-A ")[-1].strip()
+                    elif "--time=" in line:
+                        t = line.split("--time=")[-1].strip()
+                        # convert HH:MM:SS to seconds
+                        parts = t.split(":")
+                        sbatch_values["duration"] = int(parts[0])*3600 + int(parts[1])*60 + int(parts[2])
+                    elif "-N " in line:
+                        sbatch_values["node_count"] = int(line.split("-N ")[-1].strip())
+                    elif "-C " in line:
+                        sbatch_values["constraint"] = line.split("-C ")[-1].strip()
 
             script_body = "\n".join(
                 line for line in job_script.splitlines()
@@ -270,22 +285,21 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
             job_spec = {
                 "executable": "/bin/bash",
                 "arguments": ["-c", script_body],
-                "stdout_path": f"{pscratch_path}/tomo_recon_logs/iri_job.out",
-                "stderr_path": f"{pscratch_path}/tomo_recon_logs/iri_job.err",
                 "resources": {
-                    "node_count": num_nodes,
+                    "node_count": sbatch_values.get("node_count", 1),
                     "processes_per_node": 1,
                     "cpu_cores_per_process": 64,
                     "exclusive_node_use": True,
                 },
                 "attributes": {
-                    "duration": 1800,
-                    "queue_name": "regular",  # change to dynamic
-                    "account": "dabramov",  # change to dynamic
-                    "custom_attributes": {"constraint": "cpu"},
+                    "duration": sbatch_values.get("duration", 1800),
+                    "queue_name": sbatch_values.get("queue_name", "realtime"),
+                    "account": sbatch_values.get("account", "als"),
+                    "custom_attributes": {
+                        "constraint": sbatch_values.get("constraint", "cpu")
+                    },
                 },
             }
-
             response = self.client.post(
                 f"/api/v1/compute/job/{_IRI_COMPUTE_RESOURCE}",
                 json=job_spec,
