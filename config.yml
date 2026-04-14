@@ -163,30 +163,30 @@ scicat:
 hpc_submission_settings832:
   nersc_reconstruction:
     # ── SLURM resource allocation ─────────────────────────────────────────────
-    qos: realtime
+    qos: debug
     account: als
     reservation: ""
-    num_nodes: 4
+    num_nodes: 2
     cpus-per-task: 128
     walltime: "0:30:00"
   nersc_multiresolution:
     # ── SLURM resource allocation ─────────────────────────────────────────────
-    qos: realtime
+    qos: debug
     account: als
     reservation: ""
     cpus-per-task: 128
     walltime: "0:15:00"
   nersc_segmentation_sam3:
     # ── SLURM resource allocation ─────────────────────────────────────────────
-    qos: regular
+    qos: debug
     account: als
     constraint: gpu
     reservation: ""
-    num_nodes: 4
+    num_nodes: 2
     ntasks-per-node: 1
     gpus-per-node: 4
     cpus-per-task: 128
-    walltime: "00:59:00"
+    walltime: "00:30:00"
     # ── Inference parameters ──────────────────────────────────────────────────
     script_name: "src/inference_v6.py"
     batch_size: 1
@@ -209,16 +209,16 @@ hpc_submission_settings832:
     finetuned_checkpoint_path: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/sam3_finetune/sam3/checkpoint_v6.pt
   nersc_segmentation_dinov3:
     # ── SLURM resource allocation ─────────────────────────────────────────────
-    qos: regular
+    qos: debug
     account: als
     constraint: gpu
     reservation: ""
-    num_nodes: 4
+    num_nodes: 2
     ntasks-per-node: 1
     nproc_per_node: 4
     gpus-per-node: 4
     cpus-per-task: 128
-    walltime: "00:59:00"
+    walltime: "00:30:00"
     # ── Inference parameters ──────────────────────────────────────────────────
     script_name: "src.inference_dino_v1"
     batch_size: 4
@@ -229,14 +229,14 @@ hpc_submission_settings832:
     dino_checkpoint_path: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/dino/best.ckpt
   nersc_combine_segmentations:
     # ── SLURM resource allocation ─────────────────────────────────────────────
-    qos: regular
+    qos: debug
     account: als
     constraint: cpu
     reservation: ""
-    num_nodes: 4
+    num_nodes: 2
     ntasks: 128
     cpus-per-task: 1
-    walltime: "01:00:00"
+    walltime: "00:30:00"
     # ── Combination parameters ────────────────────────────────────────────────
     script_name: "src.combine_sam_dino_v3"
     dilate_px: 5
