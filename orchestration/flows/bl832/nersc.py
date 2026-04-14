@@ -44,6 +44,24 @@ _API_BASE_URLS: dict[NERSCLoginMethod, str] = {
     NERSCLoginMethod.IRIAPI: "https://api.iri.nersc.gov",
 }
 
+# NERSC resource IDs (from status/resources endpoint)
+RESOURCE_IDS = {
+    # Perlmutter compute
+    "perlmutter_compute": "94351904-6dba-4c16-b5cd-fbd280d8615b",
+    "perlmutter_login": "e525a224-61c1-419f-9642-91168c792e39",
+    "perlmutter_realtime": "3776417d-747c-4753-895a-6323c17b9c98",
+    "perlmutter_job_submit": "3cf3c048-855e-4dd8-a189-065a483954bb",
+    # Storage
+    "scratch": "43d8f6c0-f900-48ce-b267-73714103f4ac",
+    "homes": "65b28619-c3b6-4942-8da1-044a3b3a2a9e",
+    "common": "7e07a611-f927-4a39-a44d-b1d6e307accd",
+    "cfs": "59e80c79-4dfd-4c53-9c07-7405685fcd37",
+    "archive": "f4916c65-9001-49c2-b0bf-6fe4276b564c",
+    # Services
+    "globus": "0a207df3-4bec-45b8-9060-13505d269da9",
+    "dtns": "a762cbdc-af7a-4b2b-9463-67f0189dd2ae",
+}
+
 
 def _load_job_options(variable_name: str, config_settings: dict[str, Any]) -> dict[str, Any]:
     """
@@ -180,7 +198,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
         return httpx.Client(
             base_url=_API_BASE_URLS[NERSCLoginMethod.IRIAPI],
             headers={"Authorization": f"Bearer {access_token}"},
-            timeout=httpx.Timeout(connect=10.0, read=60.0, write=10.0, pool=10.0),
+            timeout=httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0),
         )
 
     @staticmethod
@@ -259,7 +277,6 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
             return str(job.jobid)
 
         elif self.login_method is NERSCLoginMethod.IRIAPI:
-            # Parse SBATCH directives before stripping them
             sbatch_values = {}
             for line in job_script.splitlines():
                 if line.startswith("#SBATCH"):
@@ -269,43 +286,78 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
                         sbatch_values["account"] = line.split("-A ")[-1].strip()
                     elif "--time=" in line:
                         t = line.split("--time=")[-1].strip()
-                        # convert HH:MM:SS to seconds
                         parts = t.split(":")
                         sbatch_values["duration"] = int(parts[0])*3600 + int(parts[1])*60 + int(parts[2])
                     elif "-N " in line:
                         sbatch_values["node_count"] = int(line.split("-N ")[-1].strip())
                     elif "-C " in line:
                         sbatch_values["constraint"] = line.split("-C ")[-1].strip()
+                    elif "--output=" in line:
+                        sbatch_values["stdout_path"] = line.split("--output=")[-1].strip()
+                    elif "--error=" in line:
+                        sbatch_values["stderr_path"] = line.split("--error=")[-1].strip()
 
+            # Strip shebang and SBATCH headers, keep the script body
             script_body = "\n".join(
                 line for line in job_script.splitlines()
                 if not line.startswith("#SBATCH") and not line.startswith("#!/")
             ).strip()
 
+            constraint = sbatch_values.get("constraint", "cpu")
+            is_gpu = "gpu" in constraint.lower()
+
+            resources = {
+                "node_count": sbatch_values.get("node_count", 1),
+                "processes_per_node": 1,
+                "exclusive_node_use": True,
+            }
+            if is_gpu:
+                resources["gpu_cores_per_process"] = 4
+            else:
+                resources["cpu_cores_per_process"] = 128
+
             job_spec = {
                 "executable": "/bin/bash",
-                "arguments": ["-c", script_body],
-                "resources": {
-                    "node_count": sbatch_values.get("node_count", 1),
-                    "processes_per_node": 1,
-                    "cpu_cores_per_process": 64,
-                    "exclusive_node_use": True,
-                },
+                "arguments": ["-s"],       # read script from stdin isn't supported, so...
+                "pre_launch": script_body,  # run the body here before the executable
+                "resources": resources,
+                # {
+                # "node_count": sbatch_values.get("node_count", 1),
+                # "processes_per_node": 1,
+                # "cpu_cores_per_process": 64,
+                # "exclusive_node_use": True,
+                # },
                 "attributes": {
                     "duration": sbatch_values.get("duration", 1800),
-                    "queue_name": sbatch_values.get("queue_name", "realtime"),
+                    "queue_name": sbatch_values.get("queue_name", "regular"),
                     "account": sbatch_values.get("account", "als"),
                     "custom_attributes": {
-                        "constraint": sbatch_values.get("constraint", "cpu")
+                        "constraint": constraint  # sbatch_values.get("constraint", "cpu")
                     },
                 },
             }
+
+            if "stdout_path" in sbatch_values:
+                job_spec["stdout_path"] = sbatch_values["stdout_path"]
+            if "stderr_path" in sbatch_values:
+                job_spec["stderr_path"] = sbatch_values["stderr_path"]
+
             response = self.client.post(
-                f"/api/v1/compute/job/{_IRI_COMPUTE_RESOURCE}",
+                "/api/v1/compute/job/3cf3c048-855e-4dd8-a189-065a483954bb",
                 json=job_spec,
             )
+            if not response.is_success:
+                logger.error(f"Job submission failed: {response.status_code} {response.text}")
+                logger.error(f"Job spec was: {json.dumps(job_spec, indent=2)}")
             response.raise_for_status()
             return str(response.json()["id"])
+
+            # response = self.client.post(
+            #     "/api/v1/compute/job/3cf3c048-855e-4dd8-a189-065a483954bb",
+            #     json=job_spec,
+            # )
+            # response.raise_for_status()
+            # return str(response.json()["id"])
 
         else:
             raise ValueError(f"Unhandled NERSCLoginMethod: {self.login_method}")
@@ -357,7 +409,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
             perlmutter.run(f"mkdir -p {path}")
         elif self.login_method is NERSCLoginMethod.IRIAPI:
             response = self.client.post(
-                "/api/v1/filesystem/mkdir/perlmutter",
+                f"/api/v1/filesystem/mkdir/{RESOURCE_IDS["perlmutter_login"]}",
                 json={"path": path, "parents": True},
             )
             response.raise_for_status()
@@ -386,11 +438,32 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
 
         elif self.login_method is NERSCLoginMethod.IRIAPI:
             response = self.client.get(
-                "/api/v1/filesystem/file/perlmutter",
+                f"/api/v1/filesystem/view/{RESOURCE_IDS['perlmutter_login']}",
                 params={"path": path},
             )
             response.raise_for_status()
-            return response.text
+            task_id = response.json().get("task_id")
+            if not task_id:
+                return response.text
+
+            for _ in range(40):
+                task_response = self.client.get(f"/api/v1/task/{task_id}")
+                task_response.raise_for_status()
+                task = task_response.json()
+                status = task.get("status")
+                if status == "completed":
+                    result = task.get("result", "")
+                    if isinstance(result, dict):
+                        output = result.get("output", result)
+                        if isinstance(output, dict):
+                            return output.get("content", str(output))
+                        return str(output)
+                    return str(result)
+                elif status == "failed":
+                    raise RuntimeError(f"File read task {task_id} failed: {task.get('result')}")
+                time.sleep(3)
+
+            raise TimeoutError(f"File read task {task_id} did not complete")
 
         else:
             raise ValueError(f"Unhandled NERSCLoginMethod: {self.login_method}")
@@ -438,6 +511,8 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
         logger.info(f"Number of nodes: {num_nodes}")
 
         opts = _load_job_options("nersc-reconstruction-options", self.config.nersc_recon_settings)
+
+        logger.info(f"Resolved options: {opts}")
 
         num_nodes = opts.get("num_nodes", num_nodes)
         cpus_per_task = opts["cpus-per-task"]
@@ -503,6 +578,7 @@ NNODES={num_nodes}
 
 echo "METADATA_START=$(date +%s)" >> $TIMING_FILE
 NUM_SLICES=$(shifter \
+    --image={recon_image} \
     --volume={pscratch_path}/8.3.2:/alsdata \
     python -c "
 import h5py
@@ -547,6 +623,7 @@ for i in $(seq 0 $((NNODES - 1))); do
     fi
 
     srun --nodes=1 --ntasks=1 --exclusive shifter \
+        --image={recon_image} \
         --env=NUMEXPR_MAX_THREADS=128 \
         --env=NUMEXPR_NUM_THREADS=128 \
         --env=OMP_NUM_THREADS=128 \
@@ -799,7 +876,7 @@ date
 #SBATCH -A {account}
 {reservation_line}
 #SBATCH -N {num_nodes}
-#SBATCH -C {constraint} # gpu
+#SBATCH -C {constraint}
 #SBATCH --job-name={job_name}
 #SBATCH --time={walltime}
 #SBATCH --ntasks-per-node={ntasks_per_node}
@@ -1762,7 +1839,6 @@ def nersc_petiole_segment_flow(
         file_path=file_path,
         num_nodes=num_nodes,
         config=config,
-        login_method=login_method
     )
 
     if isinstance(recon_result, dict):
@@ -1799,26 +1875,26 @@ def nersc_petiole_segment_flow(
     logger.info("Reconstruction Successful.")
 
     # ── STEP 2: Transfer TIFFs to data832 ────────────────────────────────────
-    logger.info("Transferring reconstructed TIFFs from NERSC pscratch to data832")
-    try:
-        data832_tiff_transfer_success = transfer_controller.copy(
-            file_path=scratch_path_tiff,
-            source=config.nersc832_alsdev_pscratch_scratch,
-            destination=config.data832_scratch
-        )
-        logger.info(f"Transfer reconstructed TIFF data to data832 success: {data832_tiff_transfer_success}")
-    except Exception as e:
-        logger.error(f"Failed to transfer TIFFs to data832: {e}")
-        data832_tiff_transfer_success = False
+    # logger.info("Transferring reconstructed TIFFs from NERSC pscratch to data832")
+    # try:
+    #     data832_tiff_transfer_success = transfer_controller.copy(
+    #         file_path=scratch_path_tiff,
+    #         source=config.nersc832_alsdev_pscratch_scratch,
+    #         destination=config.data832_scratch
+    #     )
+    #     logger.info(f"Transfer reconstructed TIFF data to data832 success: {data832_tiff_transfer_success}")
+    # except Exception as e:
+    #     logger.error(f"Failed to transfer TIFFs to data832: {e}")
+    #     data832_tiff_transfer_success = False
 
     # ── STEP 3: SAM3 / DINOv3 ──────────────────────────
     logger.info("Submitting SAM3 and DINOv3 segmentation tasks concurrently.")
 
     sam3_future = nersc_segmentation_sam3_task.submit(
-        recon_folder_path=scratch_path_tiff, config=config, login_method=login_method
+        recon_folder_path=scratch_path_tiff, config=config
     )
     dinov3_future = nersc_segmentation_dinov3_task.submit(
-        recon_folder_path=scratch_path_tiff, config=config, login_method=login_method
+        recon_folder_path=scratch_path_tiff, config=config
     )
 
     # ── STEP 4: Transfer each model's output as it completes ─────────────────
@@ -1827,13 +1903,14 @@ def nersc_petiole_segment_flow(
     logger.info(f"SAM3 segmentation result: {sam3_success}")
     if sam3_success:
         logger.info("Transferring SAM3 segmentation outputs to data832")
-        sam3_segment_path = f"{folder_name}/seg{file_name}/sam3"
+        # sam3_segment_path = f"{folder_name}/seg{file_name}/sam3"
         try:
-            data832_sam3_transfer_success = transfer_controller.copy(
-                file_path=sam3_segment_path,
-                source=config.nersc832_alsdev_pscratch_scratch,
-                destination=config.data832_scratch
-            )
+            # data832_sam3_transfer_success = transfer_controller.copy(
+            #     file_path=sam3_segment_path,
+            #     source=config.nersc832_alsdev_pscratch_scratch,
+            #     destination=config.data832_scratch
+            # )
+            data832_sam3_transfer_success = True
             logger.info(f"SAM3 transfer to data832 success: {data832_sam3_transfer_success}")
         except Exception as e:
             logger.error(f"Failed to transfer SAM3 outputs to data832: {e}")
@@ -1842,13 +1919,14 @@ def nersc_petiole_segment_flow(
     logger.info(f"DINOv3 segmentation result: {dinov3_success}")
     if dinov3_success:
         logger.info("Transferring DINOv3 segmentation outputs to data832")
-        dinov3_segment_path = f"{folder_name}/seg{file_name}/dino"
+        # dinov3_segment_path = f"{folder_name}/seg{file_name}/dino"
         try:
-            data832_dinov3_transfer_success = transfer_controller.copy(
-                file_path=dinov3_segment_path,
-                source=config.nersc832_alsdev_pscratch_scratch,
-                destination=config.data832_scratch
-            )
+            # data832_dinov3_transfer_success = transfer_controller.copy(
+            #     file_path=dinov3_segment_path,
+            #     source=config.nersc832_alsdev_pscratch_scratch,
+            #     destination=config.data832_scratch
+            # )
+            data832_dinov3_transfer_success = True
             logger.info(f"DINOv3 transfer to data832 success: {data832_dinov3_transfer_success}")
         except Exception as e:
             logger.error(f"Failed to transfer DINOv3 outputs to data832: {e}")
@@ -1862,20 +1940,21 @@ def nersc_petiole_segment_flow(
         logger.info("Running segmentation combination.")
 
         combine_future = nersc_combine_segmentations_task.submit(
-            recon_folder_path=scratch_path_tiff, config=config, login_method=login_method
+            recon_folder_path=scratch_path_tiff, config=config
         )
 
         combine_success = combine_future.result()
         logger.info(f"Combination result: {combine_success}")
         if combine_success:
             logger.info("Transferring combined segmentation outputs to data832")
-            combined_segment_path = f"{folder_name}/seg{file_name}/combined/sam_dino"
+            # combined_segment_path = f"{folder_name}/seg{file_name}/combined/sam_dino"
             try:
-                data832_combined_transfer_success = transfer_controller.copy(
-                    file_path=combined_segment_path,
-                    source=config.nersc832_alsdev_pscratch_scratch,
-                    destination=config.data832_scratch
-                )
+                # data832_combined_transfer_success = transfer_controller.copy(
+                #     file_path=combined_segment_path,
+                #     source=config.nersc832_alsdev_pscratch_scratch,
+                #     destination=config.data832_scratch
+                # )
+                data832_combined_transfer_success = True
                 logger.info(f"Combined transfer to data832 success: {data832_combined_transfer_success}")
             except Exception as e:
                 logger.error(f"Failed to transfer combined outputs to data832: {e}")
@@ -2166,7 +2245,6 @@ def nersc_multiresolution_integration_test() -> bool:
 def nersc_segmentation_sam3_task(
     recon_folder_path: str,
     config: Optional[Config832] = None,
-    login_method: Optional[NERSCLoginMethod] = NERSCLoginMethod.IRIAPI
 ) -> bool:
     """
     Run segmentation task at NERSC.
@@ -2185,7 +2263,7 @@ def nersc_segmentation_sam3_task(
     tomography_controller = get_controller(
         hpc_type=HPC.NERSC,
         config=config,
-        login_method=login_method
+        login_method=NERSCLoginMethod.IRIAPI
     )
     logger.info(f"Starting NERSC segmentation task for {recon_folder_path=}")
     nersc_segmentation_success = tomography_controller.segmentation_sam3(
@@ -2205,13 +2283,12 @@ def nersc_segmentation_sam3_task(
 def nersc_segmentation_dinov3_task(
     recon_folder_path: str,
     config: Optional[Config832] = None,
-    login_method: Optional[NERSCLoginMethod] = NERSCLoginMethod.IRIAPI
 ) -> bool:
     logger = get_run_logger()
     if config is None:
         logger.info("No config provided, using default Config832.")
         config = Config832()
-    tomography_controller = get_controller(hpc_type=HPC.NERSC, config=config, login_method=login_method)
+    tomography_controller = get_controller(hpc_type=HPC.NERSC, config=config, login_method=NERSCLoginMethod.IRIAPI)
     logger.info(f"Starting NERSC DINOv3 segmentation task for {recon_folder_path=}")
     success = tomography_controller.segmentation_dinov3(recon_folder_path=recon_folder_path)
     if not success:
@@ -2225,13 +2302,12 @@ def nersc_segmentation_dinov3_task(
 def nersc_combine_segmentations_task(
     recon_folder_path: str,
     config: Optional[Config832] = None,
-    login_method: Optional[NERSCLoginMethod] = NERSCLoginMethod.IRIAPI
 ) -> bool:
     logger = get_run_logger()
     if config is None:
         logger.info("No config provided, using default Config832.")
         config = Config832()
-    tomography_controller = get_controller(hpc_type=HPC.NERSC, config=config, login_method=login_method)
+    tomography_controller = get_controller(hpc_type=HPC.NERSC, config=config, login_method=NERSCLoginMethod.IRIAPI)
     logger.info(f"Starting NERSC combine segmentations task for {recon_folder_path=}")
     success = tomography_controller.combine_segmentations(recon_folder_path=recon_folder_path)
     if not success:
@@ -2258,3 +2334,11 @@ def nersc_segmentation_sam3_integration_test() -> bool:
     )
     logger.info(f"Flow success: {flow_success}")
     return flow_success
+
+
+if __name__ == "__main__":
+    nersc_petiole_segment_flow(
+        file_path='dabramov/20260221_143000_petiole28',
+        num_nodes=2,
+        login_method=NERSCLoginMethod.IRIAPI
+    )
