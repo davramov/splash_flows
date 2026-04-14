@@ -370,7 +370,6 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
             return str(job.jobid)
 
         elif self.login_method is NERSCLoginMethod.IRIAPI:
-            # Parse SBATCH directives before stripping them
             sbatch_values = {}
             for line in job_script.splitlines():
                 if line.startswith("#SBATCH"):
@@ -380,7 +379,6 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
                         sbatch_values["account"] = line.split("-A ")[-1].strip()
                     elif "--time=" in line:
                         t = line.split("--time=")[-1].strip()
-                        # convert HH:MM:SS to seconds
                         parts = t.split(":")
                         sbatch_values["duration"] = int(parts[0])*3600 + int(parts[1])*60 + int(parts[2])
                     elif "-N " in line:
@@ -395,7 +393,6 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
                         sbatch_values["reservation"] = line.split("--reservation=")[-1].strip()
 
             # Strip shebang and SBATCH headers, keep the script body
-
             script_body = "\n".join(
                 line for line in job_script.splitlines()
                 if not line.startswith("#SBATCH") and not line.startswith("#!/")
@@ -447,6 +444,13 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
                 logger.error(f"Job spec was: {json.dumps(job_spec, indent=2)}")
             response.raise_for_status()
             return str(response.json()["id"])
+
+            # response = self.client.post(
+            #     "/api/v1/compute/job/3cf3c048-855e-4dd8-a189-065a483954bb",
+            #     json=job_spec,
+            # )
+            # response.raise_for_status()
+            # return str(response.json()["id"])
 
         else:
             raise ValueError(f"Unhandled NERSCLoginMethod: {self.login_method}")
@@ -1998,7 +2002,6 @@ def nersc_petiole_segment_flow(
         file_path=file_path,
         num_nodes=num_nodes,
         config=config,
-        login_method=login_method
     )
 
     if isinstance(recon_result, dict):
@@ -2052,7 +2055,7 @@ def nersc_petiole_segment_flow(
     logger.info("Submitting SAM3 and DINOv3 segmentation tasks concurrently.")
 
     sam3_future = nersc_segmentation_sam3_task.submit(
-        recon_folder_path=scratch_path_tiff, config=config, login_method=login_method
+        recon_folder_path=scratch_path_tiff, config=config
     )
     dinov3_future = nersc_segmentation_dinov3_task.submit(
         recon_folder_path=scratch_path_tiff, config=config, project="petiole", login_method=login_method
@@ -2105,7 +2108,7 @@ def nersc_petiole_segment_flow(
         logger.info("Running segmentation combination.")
 
         combine_future = nersc_combine_segmentations_task.submit(
-            recon_folder_path=scratch_path_tiff, config=config, login_method=login_method
+            recon_folder_path=scratch_path_tiff, config=config
         )
 
         combine_success = combine_future.result()
@@ -2651,7 +2654,7 @@ def nersc_segmentation_sam3_task(
     tomography_controller = get_controller(
         hpc_type=HPC.NERSC,
         config=config,
-        login_method=login_method
+        login_method=NERSCLoginMethod.IRIAPI
     )
     logger.info(f"Starting NERSC segmentation task for {recon_folder_path=}")
     nersc_segmentation_success = tomography_controller.segmentation_sam3(
@@ -2750,14 +2753,14 @@ def nersc_segmentation_sam3_integration_test() -> bool:
     return flow_success
 
 
-if __name__ == "__main__":
+# if __name__ == "__main__":
     # nersc_segmentation_dinov3_task(
     #     recon_folder_path='dabramov/recmoon/',
     #     config=Config832(),
     #     project="moon"
     # )
-    nersc_petiole_segment_flow(
-        file_path='dabramov/20260221_143000_petiole28',
-        num_nodes=4,
-        login_method=NERSCLoginMethod.IRIAPI
-    )
+    # nersc_petiole_segment_flow(
+    #     file_path='dabramov/20260221_143000_petiole28',
+    #     num_nodes=2,
+    #     login_method=NERSCLoginMethod.IRIAPI
+    # )
