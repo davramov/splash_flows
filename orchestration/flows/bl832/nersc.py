@@ -370,6 +370,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
             return str(job.jobid)
 
         elif self.login_method is NERSCLoginMethod.IRIAPI:
+            # Parse SBATCH directives before stripping them
             sbatch_values = {}
             for line in job_script.splitlines():
                 if line.startswith("#SBATCH"):
@@ -379,6 +380,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
                         sbatch_values["account"] = line.split("-A ")[-1].strip()
                     elif "--time=" in line:
                         t = line.split("--time=")[-1].strip()
+                        # convert HH:MM:SS to seconds
                         parts = t.split(":")
                         sbatch_values["duration"] = int(parts[0])*3600 + int(parts[1])*60 + int(parts[2])
                     elif "-N " in line:
