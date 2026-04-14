@@ -237,7 +237,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
                 )
             return username
 
-    def _submit_job(self, job_script: str) -> str:
+    def _submit_job(self, job_script: str, num_nodes: int = 1) -> str:
         """Submit a Slurm job script and return the job ID.
 
         Dispatches to the appropriate submission mechanism based on
@@ -245,6 +245,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
 
         Args:
             job_script: The full Slurm batch script to submit.
+            num_nodes: The number of nodes to request for the job.
 
         Returns:
             The submitted job ID as a string.
@@ -272,15 +273,15 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
                 "stdout_path": f"{pscratch_path}/tomo_recon_logs/iri_job.out",
                 "stderr_path": f"{pscratch_path}/tomo_recon_logs/iri_job.err",
                 "resources": {
-                    "node_count": 1,
+                    "node_count": num_nodes,
                     "processes_per_node": 1,
                     "cpu_cores_per_process": 64,
                     "exclusive_node_use": True,
                 },
                 "attributes": {
                     "duration": 1800,
-                    "queue_name": "realtime",
-                    "account": "als",
+                    "queue_name": "regular",  # change to dynamic
+                    "account": "dabramov",  # change to dynamic
                     "custom_attributes": {"constraint": "cpu"},
                 },
             }
