@@ -291,6 +291,19 @@ def get_iri_access_token(
             or if the resulting tokens do not include a valid IRI access token.
     """
     client = globus_sdk.NativeAppAuthClient(CLIENT_ID)
+
+    # Fast path: if token exists and is not expired, return it directly without refreshing or saving
+    if not force_login:
+        stored = load_tokens(token_file)
+        if stored:
+            try:
+                iri_token = get_iri_token(stored)
+                expires_at = iri_token.get("expires_at_seconds", 0)
+                if expires_at and time.time() < expires_at - 60:  # 60s buffer
+                    return iri_token["access_token"]
+            except RuntimeError:
+                pass  # fall through to refresh
+
     auth_data = None
     used_refresh = False
     if not force_login:
