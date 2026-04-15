@@ -272,13 +272,6 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
             ValueError: If ``GLOBUS_CLIENT_ID`` or ``GLOBUS_CLIENT_SECRET`` are unset.
             RuntimeError: If the acquired token is missing required scopes.
         """
-        client_id = "fae5c579-490a-4d76-b6eb-d78f65caeb63"  # os.getenv(_IRIAPI_GLOBUS_CLIENT_ID_ENV)
-
-        if not client_id:
-            raise ValueError(
-                f"Globus client ID is unset. Set {_IRIAPI_GLOBUS_CLIENT_ID_ENV}."
-            )
-
         token_file_env = os.getenv(_IRIAPI_TOKEN_FILE_ENV)
         token_file = Path(token_file_env) if token_file_env else DEFAULT_TOKEN_FILE
 
