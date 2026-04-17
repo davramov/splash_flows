@@ -180,8 +180,8 @@ hpc_submission_settings832:
     # ── SLURM resource allocation ─────────────────────────────────────────────
     qos: realtime
     account: als
-    reservation: ""
-    num_nodes: 4
+    reservation: "_CAP_TOMO_MOON_CPU"
+    num_nodes: 16
     cpus-per-task: 128
     walltime: "0:30:00"
   nersc_multiresolution:
@@ -268,7 +268,7 @@ hpc_submission_settings832:
     qos: regular
     account: als
     constraint: gpu
-    reservation: ""
+    reservation: "_CAP_TOMO_MOON_GPU"
     num_nodes: 4
     ntasks-per-node: 1
     nproc_per_node: 4
