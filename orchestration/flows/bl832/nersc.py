@@ -2398,3 +2398,11 @@ def nersc_segmentation_sam3_integration_test() -> bool:
     )
     logger.info(f"Flow success: {flow_success}")
     return flow_success
+
+
+if __name__ == "__main__":
+    nersc_segmentation_dinov3_task(
+        recon_folder_path='dabramov/recmoon/',
+        config=Config832(),
+        project="moon"
+    )

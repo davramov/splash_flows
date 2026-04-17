@@ -63,14 +63,14 @@ def register_mlflow_checkpoints():
 
     register_checkpoint(
         model_name="dinov3-moon",
-        nersc_path="/global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/dino_moon/best.ckpt",
-        alcf_path="/eagle/IRIBeta/als/seg_models/dino_moon/best.ckpt",
+        nersc_path="/global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/dino/best_moon.ckpt",
+        alcf_path="/eagle/IRIBeta/als/seg_models/dino/best_moon.ckpt",
         config=config,
         alias="production",
         description="DINOv3 fine-tuned on lunar regolith micro-CT data (ice, particles, pores).",
         inference_params={
             "conda_env_path": "/global/cfs/cdirs/als/data_mover/8.3.2/envs/dino_demo",
-            "seg_scripts_dir": f"{scripts_dir}inference_v5_multiseg/forge_feb_seg_model_demo/",
+            "seg_scripts_dir": f"{scripts_dir}moon_seg/forge_feb_seg_model_demo/",
             "script_name": "src.inference_dino_v2",
             "batch_size": 4,
             "nproc_per_node": 4,
