@@ -40,10 +40,6 @@ class FlowParameterMapper:
         "nersc_moon_segment_flow/nersc_moon_segment_flow": [
             "file_path",
             "num_nodes",
-            "config"],
-        "nersc_forge_recon_multisegment_flow/nersc_forge_recon_multisegment_flow": [
-            "file_path",
-            "num_nodes",
             "config"]
     }
 
@@ -218,18 +214,6 @@ async def dispatcher(
             "nersc_moon_segment_flow/nersc_moon_segment_flow", available_params
         )
         tasks.append(run_recon_flow_async("nersc_moon_segment_flow/nersc_moon_segment_flow", moon_params))
-
-    if decision_settings.get("nersc_forge_recon_segment_flow/nersc_forge_recon_segment_flow"):
-        nersc_forge_recon_segment_params = FlowParameterMapper.get_flow_parameters(
-            "nersc_forge_recon_segment_flow/nersc_forge_recon_segment_flow", available_params)
-        tasks.append(run_recon_flow_async(
-            "nersc_forge_recon_segment_flow/nersc_forge_recon_segment_flow", nersc_forge_recon_segment_params))
-
-    if decision_settings.get("nersc_forge_recon_multisegment_flow/nersc_forge_recon_multisegment_flow"):
-        nersc_forge_recon_multisegment_params = FlowParameterMapper.get_flow_parameters(
-            "nersc_forge_recon_multisegment_flow/nersc_forge_recon_multisegment_flow", available_params)
-        tasks.append(run_recon_flow_async(
-            "nersc_forge_recon_multisegment_flow/nersc_forge_recon_multisegment_flow", nersc_forge_recon_multisegment_params))
 
     # Run ALCF and NERSC flows in parallel, if any
     if tasks:
