@@ -150,6 +150,7 @@ class MockConfig832():
                                                     MockSecret.for_endpoint("nersc832_alsdev_scratch")),
             "alcf832_raw": MockEndpoint("mock_alcf832_raw_path", MockSecret.for_endpoint("alcf832_raw")),
             "alcf832_scratch": MockEndpoint("mock_alcf832_scratch_path", MockSecret.for_endpoint("alcf832_scratch")),
+            "beegfs_raw": MockEndpoint("mock_beegfs_raw_path", MockSecret.for_endpoint("beegfs_raw"))
         }
 
         # Mock apps
@@ -169,6 +170,7 @@ class MockConfig832():
         self.data832_raw = self.endpoints["data832_raw"]
         self.data832_scratch = self.endpoints["data832_scratch"]
         self.nersc832_alsdev_scratch = self.endpoints["nersc832_alsdev_scratch"]
+        self.beegfs_raw = self.endpoints["beegfs_raw"]
         self.scicat = config["scicat"]
 
 
@@ -250,6 +252,7 @@ def test_alcf_recon_flow(mocker: MockFixture):
             "nersc832_alsdev_recon_scripts": mocker.MagicMock(),
             "alcf832_raw": mocker.MagicMock(),
             "alcf832_scratch": mocker.MagicMock(),
+            "bl832-beegfs-raw": mocker.MagicMock(),
         }
     )
     mocker.patch(
