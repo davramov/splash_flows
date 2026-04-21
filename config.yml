@@ -139,6 +139,12 @@ globus:
       uuid: df82346e-9a15-11ea-b3c4-0ae144191ee3
       name: nersc832
 
+    bl832-beegfs-raw:
+      root_path: /beamline_staging/bl832/raw/
+      uri: beegfs.als.lbl.gov
+      uuid: d33b5d6e-1603-414e-93cb-bcb732b7914a
+      name: bl832-beegfs-raw
+
   globus_apps:
     als_transfer:
       client_id: ${GLOBUS_CLIENT_ID}
