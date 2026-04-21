@@ -23,7 +23,9 @@ dependencies = [
     "python-dotenv",
     "pyyaml",
     "scicat_beamline @ git+https://github.com/als-computing/scicat_beamline.git@4828273f5f49ba4eba5442728729e0545b3f5b79",
-    "sfapi_client"
+    "sfapi_client",
+    "tiled[client]",
+    "watchfiles"
 ]
 
 [build-system]
