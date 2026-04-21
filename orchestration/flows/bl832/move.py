@@ -170,6 +170,8 @@ def process_new_832_file_task(
     )
     logger.info(f"File successfully transferred from data832 to beegfs {file_path}")
 
+    # TODO: we should trigger the tiled ingestion flow in orchestration.tiled, but that flow will be set up on Ride/beegfs
+
     logger.info("Initializing prune controller")
     prune_controller = get_prune_controller(
         prune_type=PruneMethod.GLOBUS,
