@@ -12,7 +12,7 @@ from orchestration.flows.bl832.config import Config832
 from orchestration.globus.transfer import GlobusEndpoint, start_transfer
 from orchestration.prune_controller import get_prune_controller, PruneMethod
 from orchestration.prometheus_utils import PrometheusMetrics
-from splash_flows.orchestration.transfer_controller import CopyMethod, get_transfer_controller
+from orchestration.transfer_controller import CopyMethod, get_transfer_controller
 
 
 API_KEY = os.getenv("API_KEY")
