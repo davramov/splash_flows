@@ -12,6 +12,7 @@ from orchestration.flows.bl832.config import Config832
 from orchestration.globus.transfer import GlobusEndpoint, start_transfer
 from orchestration.prune_controller import get_prune_controller, PruneMethod
 from orchestration.prometheus_utils import PrometheusMetrics
+from splash_flows.orchestration.transfer_controller import CopyMethod, get_transfer_controller
 
 
 API_KEY = os.getenv("API_KEY")
@@ -155,6 +156,19 @@ def process_new_832_file_task(
             scicat_ingest_flow(dataset_path=Path(file_path), ingester_spec=TOMO_INGESTOR_SPEC)
         except Exception as e:
             logger.error(f"SciCat ingest failed with {e}")
+
+    transfer_controller = get_transfer_controller(
+        transfer_type=CopyMethod.GLOBUS,
+        config=config,
+        prometheus_metrics=None
+    )
+
+    transfer_controller.copy(
+        file_path=relative_path,
+        source=config.data832,
+        destination=config.beegfs_raw
+    )
+    logger.info(f"File successfully transferred from data832 to beegfs {file_path}")
 
     logger.info("Initializing prune controller")
     prune_controller = get_prune_controller(
