@@ -16,8 +16,9 @@ from typing import Any, Optional
 
 from orchestration.flows.bl832.config import Config832
 from orchestration.flows.bl832.job_controller import get_controller, HPC, TomographyHPCController
+from orchestration.mlflow import get_checkpoint_info
 from orchestration.prune_controller import get_prune_controller, PruneMethod
-from orchestration.transfer_controller import get_transfer_controller, CopyMethod
+from orchestration.transfer_controller import globus_transfer_task
 from orchestration.flows.bl832.streaming_mixin import (
     NerscStreamingMixin, SlurmJobBlock, cancellation_hook, monitor_streaming_job, save_block
 )
@@ -28,40 +29,91 @@ logger.setLevel(logging.INFO)
 load_dotenv()
 
 
-def _load_job_options(variable_name: str, config_settings: dict[str, Any]) -> dict[str, Any]:
+def _load_job_options(
+    variable_name: str,
+    config_settings: dict[str, Any],
+    config: Config832 | None = None,
+    mlflow_model_name: str | None = None,
+    mlflow_checkpoint_key: str | None = None,
+) -> dict[str, Any]:
+    """Load job options with three-layer resolution: config → MLflow → Prefect Variable.
+
+    Resolution order (later layers win):
+
+    1. ``config_settings`` — authoritative defaults from the config YAML.
+    2. MLflow Model Registry — if ``mlflow_model_name`` is provided, all
+       ``inference_params`` tags are overlaid onto opts by their config key name.
+       ``nersc_path`` is additionally mapped to ``mlflow_checkpoint_key`` if given.
+    3. Prefect Variable (``variable_name``) — skipped if absent or ``defaults: true``.
+       If ``defaults: false``, provided keys override all lower layers.
+
+    Args:
+        variable_name: Name of the Prefect Variable to load.
+        config_settings: Settings dict from Config832 used as base defaults.
+        config: Config832 instance needed for MLflow lookup. If ``None``, the
+            MLflow layer is skipped.
+        mlflow_model_name: Registered MLflow model name, e.g. ``'sam3-petiole'``.
+            If ``None``, the MLflow layer is skipped.
+        mlflow_checkpoint_key: Config key to populate from the MLflow model's
+            ``nersc_path`` tag, e.g. ``'finetuned_checkpoint_path'``.
+
+    Returns:
+        Resolved options dict ready for use by the caller.
     """
-    Load job options, using config as defaults and a Prefect Variable as overrides.
+    # ── Layer 1: config defaults ──────────────────────────────────────────────
+    opts = dict(config_settings)
 
-    Resolution order:
+    # ── Layer 2: MLflow registry ──────────────────────────────────────────────
+    if config is not None and mlflow_model_name:
+        try:
+            checkpoint_info = get_checkpoint_info(mlflow_model_name, config)
+            if checkpoint_info:
+                # Map nersc_path to the caller-specified checkpoint key
+                if mlflow_checkpoint_key:
+                    opts[mlflow_checkpoint_key] = checkpoint_info.nersc_path
+                    logger.info(
+                        f"MLflow '{mlflow_model_name}': "
+                        f"{mlflow_checkpoint_key}={checkpoint_info.nersc_path}"
+                    )
+                # Overlay all inference params that match existing config keys
+                overlaid = []
+                for k, v in checkpoint_info.inference_params.items():
+                    if k in opts:
+                        opts[k] = v
+                        overlaid.append(k)
+                    else:
+                        # Also inject new keys (e.g. alcf_path for future use)
+                        opts[k] = v
+                logger.info(
+                    f"MLflow '{mlflow_model_name}': overlaid params: {overlaid}"
+                )
+            else:
+                logger.info(
+                    f"MLflow: no production checkpoint for '{mlflow_model_name}', "
+                    "using config defaults."
+                )
+        except Exception as e:
+            logger.warning(
+                f"MLflow lookup failed for '{mlflow_model_name}': {e}. "
+                "Using config defaults."
+            )
 
-    1. Load the named Prefect Variable.
-    2. If absent, malformed, or ``defaults: true`` → return ``config_settings`` unchanged.
-    3. If ``defaults: false`` → return ``config_settings`` with variable values overlaid.
-
-    The config YAML is the authoritative source for all default values. The Prefect
-    Variable only needs to contain the keys it wishes to override, and may introduce
-    keys not present in config (e.g. a bare ``checkpoint`` filename for SAM3).
-
-    :param variable_name: Name of the Prefect Variable to load.
-    :param config_settings: Settings dict read directly from the Config832 object
-        (e.g. ``config.nersc_recon_settings``). Used as-is when defaults=True.
-    :return: Resolved options dict ready for use by the caller.
-    """
+    # ── Layer 3: Prefect Variable overrides ───────────────────────────────────
     try:
         options = Variable.get(variable_name, default={"defaults": True}, _sync=True)
         if isinstance(options, str):
             options = json.loads(options)
     except Exception as e:
-        logger.warning(f"Could not load '{variable_name}': {e}. Using config defaults.")
-        return dict(config_settings)
+        logger.warning(f"Could not load '{variable_name}': {e}. Skipping variable overrides.")
+        return opts
 
     if options.get("defaults", True):
-        logger.info(f"Using config defaults for '{variable_name}'")
-        return dict(config_settings)
+        logger.info(f"Prefect Variable '{variable_name}': no overrides.")
+        return opts
 
-    logger.info(f"Overriding config defaults with variable options for '{variable_name}'")
     overrides = {k: v for k, v in options.items() if k != "defaults"}
-    return {**config_settings, **overrides}
+    logger.info(f"Prefect Variable '{variable_name}': applying overrides: {list(overrides)}")
+    return {**opts, **overrides}
 
 
 class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin):
@@ -527,7 +579,13 @@ date
         user = self.client.user()
         pscratch_path = f"/pscratch/sd/{user.name[0]}/{user.name}"
 
-        opts = _load_job_options("nersc-segmentation-options", self.config.nersc_segment_sam3_settings)
+        opts = _load_job_options(
+            "nersc-segmentation-options",
+            self.config.nersc_segment_sam3_settings,
+            config=self.config,
+            mlflow_model_name="sam3-petiole",
+            mlflow_checkpoint_key="finetuned_checkpoint_path",
+        )
 
         cfs_path = opts["cfs_path"]
         conda_env_path = opts["conda_env_path"]
@@ -807,7 +865,13 @@ exit $SEG_STATUS
 
         # Load from config
 
-        opts = _load_job_options("nersc-dinov3-seg-options", self.config.nersc_segment_dinov3_settings)
+        opts = _load_job_options(
+            "nersc-dinov3-seg-options",
+            self.config.nersc_segment_dinov3_settings,
+            config=self.config,
+            mlflow_model_name="dinov3-petiole",
+            mlflow_checkpoint_key="dino_checkpoint_path",
+        )
 
         cfs_path = opts["cfs_path"]
         conda_env_path = opts["conda_env_path"]
@@ -1476,6 +1540,16 @@ def nersc_recon_flow(
     )
     logger.info("NERSC reconstruction controller initialized")
 
+    path = Path(file_path)
+    folder_name = path.parent.name
+    file_name = path.stem
+
+    tiff_file_path = f"{folder_name}/rec{file_name}"
+    zarr_file_path = f"{folder_name}/rec{file_name}.zarr"
+
+    logger.info(f"{tiff_file_path=}")
+    logger.info(f"{zarr_file_path=}")
+
     if num_nodes is None:
         num_nodes = config.nersc_recon_settings.get("num_nodes", 4)
     logger.info(f"Configured to use {num_nodes} nodes for reconstruction")
@@ -1516,53 +1590,46 @@ def nersc_recon_flow(
 
     logger.info(f"NERSC reconstruction success: {success}")
 
+    logger.info("Scheduling reconstruction transfers from pscratch to CFS and data832.")
+    pscratch_to_cfs_tiff_future = globus_transfer_task.submit(
+        file_path=tiff_file_path,
+        source=config.nersc832_alsdev_pscratch_scratch,
+        destination=config.nersc832_alsdev_scratch,
+        config=config,
+    )
+    pscratch_to_data832_tiff_future = globus_transfer_task.submit(
+        file_path=tiff_file_path,
+        source=config.nersc832_alsdev_pscratch_scratch,
+        destination=config.data832_scratch,
+        config=config,
+    )
+
+    logger.info("Building multi-resolution Zarrs.")
     nersc_multi_res_success = controller.build_multi_resolution(
         file_path=file_path,
     )
     logger.info(f"NERSC multi-resolution success: {nersc_multi_res_success}")
 
-    path = Path(file_path)
-    folder_name = path.parent.name
-    file_name = path.stem
-
-    tiff_file_path = f"{folder_name}/rec{file_name}"
-    zarr_file_path = f"{folder_name}/rec{file_name}.zarr"
-
-    logger.info(f"{tiff_file_path=}")
-    logger.info(f"{zarr_file_path=}")
-
-    # Transfer reconstructed data
-    logger.info("Preparing transfer.")
-    transfer_controller = get_transfer_controller(
-        transfer_type=CopyMethod.GLOBUS,
-        config=config
-    )
-
-    logger.info("Copy from /pscratch/sd/a/alsdev/8.3.2 to /global/cfs/cdirs/als/data_mover/8.3.2/scratch.")
-    transfer_controller.copy(
-        file_path=tiff_file_path,
-        source=config.nersc832_alsdev_pscratch_scratch,
-        destination=config.nersc832_alsdev_scratch
-    )
-
-    transfer_controller.copy(
+    logger.info("Scheduling Zarr transfers from pscratch to CFS and data832.")
+    pscratch_to_cfs_zarr_future = globus_transfer_task.submit(
         file_path=zarr_file_path,
         source=config.nersc832_alsdev_pscratch_scratch,
-        destination=config.nersc832_alsdev_scratch
+        destination=config.nersc832_alsdev_scratch,
+        config=config,
     )
-
-    logger.info("Copy from NERSC /global/cfs/cdirs/als/data_mover/8.3.2/scratch to data832")
-    transfer_controller.copy(
-        file_path=tiff_file_path,
-        source=config.nersc832_alsdev_pscratch_scratch,
-        destination=config.data832_scratch
-    )
-
-    transfer_controller.copy(
+    pscratch_to_data832_zarr_future = globus_transfer_task.submit(
         file_path=zarr_file_path,
         source=config.nersc832_alsdev_pscratch_scratch,
-        destination=config.data832_scratch
+        destination=config.data832_scratch,
+        config=config,
     )
+
+    # Resolve before pruning (which needs to know what landed where)
+    pscratch_to_cfs_tiff_future.result()
+    pscratch_to_cfs_zarr_future.result()
+    pscratch_to_data832_tiff_future.result()
+    pscratch_to_data832_zarr_future.result()
+    logger.info("All transfers complete.")
 
     logger.info("Scheduling pruning tasks.")
     schedule_pruning(
@@ -1611,10 +1678,6 @@ def nersc_petiole_segment_flow(
     logger.info(f"Reconstructed TIFFs will be at: {scratch_path_tiff}")
     logger.info(f"Segmented output will be at: {scratch_path_segment}")
 
-    transfer_controller = get_transfer_controller(
-        transfer_type=CopyMethod.GLOBUS,
-        config=config
-    )
     controller = get_controller(hpc_type=HPC.NERSC, config=config)
     logger.info("NERSC controller initialized")
 
@@ -1625,6 +1688,10 @@ def nersc_petiole_segment_flow(
     nersc_reconstruction_success = False
     sam3_success = False
     dinov3_success = False
+    data832_tiff_future = None
+    data832_sam3_future = None
+    data832_dinov3_future = None
+    data832_combined_future = None
     data832_tiff_transfer_success = False
     data832_sam3_transfer_success = False
     data832_dinov3_transfer_success = False
@@ -1673,12 +1740,13 @@ def nersc_petiole_segment_flow(
     # ── STEP 2: Transfer TIFFs to data832 ────────────────────────────────────
     logger.info("Transferring reconstructed TIFFs from NERSC pscratch to data832")
     try:
-        data832_tiff_transfer_success = transfer_controller.copy(
+        data832_tiff_future = globus_transfer_task.submit(
             file_path=scratch_path_tiff,
             source=config.nersc832_alsdev_pscratch_scratch,
-            destination=config.data832_scratch
+            destination=config.data832_scratch,
+            config=config,
         )
-        logger.info(f"Transfer reconstructed TIFF data to data832 success: {data832_tiff_transfer_success}")
+        logger.info("TIFF transfer to data832 submitted.")
     except Exception as e:
         logger.error(f"Failed to transfer TIFFs to data832: {e}")
         data832_tiff_transfer_success = False
@@ -1701,12 +1769,13 @@ def nersc_petiole_segment_flow(
         logger.info("Transferring SAM3 segmentation outputs to data832")
         sam3_segment_path = f"{folder_name}/seg{file_name}/sam3"
         try:
-            data832_sam3_transfer_success = transfer_controller.copy(
+            data832_sam3_future = globus_transfer_task.submit(
                 file_path=sam3_segment_path,
                 source=config.nersc832_alsdev_pscratch_scratch,
-                destination=config.data832_scratch
+                destination=config.data832_scratch,
+                config=config,
             )
-            logger.info(f"SAM3 transfer to data832 success: {data832_sam3_transfer_success}")
+            logger.info("SAM3 transfer to data832 submitted")
         except Exception as e:
             logger.error(f"Failed to transfer SAM3 outputs to data832: {e}")
 
@@ -1716,12 +1785,13 @@ def nersc_petiole_segment_flow(
         logger.info("Transferring DINOv3 segmentation outputs to data832")
         dinov3_segment_path = f"{folder_name}/seg{file_name}/dino"
         try:
-            data832_dinov3_transfer_success = transfer_controller.copy(
+            data832_dinov3_future = globus_transfer_task.submit(
                 file_path=dinov3_segment_path,
                 source=config.nersc832_alsdev_pscratch_scratch,
-                destination=config.data832_scratch
+                destination=config.data832_scratch,
+                config=config,
             )
-            logger.info(f"DINOv3 transfer to data832 success: {data832_dinov3_transfer_success}")
+            logger.info("DINOv3 transfer to data832 submitted")
         except Exception as e:
             logger.error(f"Failed to transfer DINOv3 outputs to data832: {e}")
 
@@ -1743,12 +1813,13 @@ def nersc_petiole_segment_flow(
             logger.info("Transferring combined segmentation outputs to data832")
             combined_segment_path = f"{folder_name}/seg{file_name}/combined/sam_dino"
             try:
-                data832_combined_transfer_success = transfer_controller.copy(
+                data832_combined_future = globus_transfer_task.submit(
                     file_path=combined_segment_path,
                     source=config.nersc832_alsdev_pscratch_scratch,
-                    destination=config.data832_scratch
+                    destination=config.data832_scratch,
+                    config=config,
                 )
-                logger.info(f"Combined transfer to data832 success: {data832_combined_transfer_success}")
+                logger.info("Combined transfer to data832 submitted")
             except Exception as e:
                 logger.error(f"Failed to transfer combined outputs to data832: {e}")
 
@@ -1758,14 +1829,27 @@ def nersc_petiole_segment_flow(
     logger.info("Copying rec and seg folders from pscratch to NERSC CFS.")
     for cfs_path in [scratch_path_tiff, scratch_path_segment]:
         try:
-            transfer_controller.copy(
+            globus_transfer_task.submit(
                 file_path=cfs_path,
                 source=config.nersc832_alsdev_pscratch_scratch,
-                destination=config.nersc832_alsdev_scratch
+                destination=config.nersc832_alsdev_scratch,
+                config=config,
             )
-            logger.info(f"CFS transfer success: {cfs_path}")
+            logger.info(f"CFS transfer submitted: {cfs_path}")
         except Exception as e:
             logger.error(f"Failed to copy {cfs_path} to NERSC CFS: {e}")
+
+    # ── Resolve all data832 futures before pruning ────────────────────────────
+    data832_tiff_transfer_success = data832_tiff_future.result() if data832_tiff_future else False
+    data832_sam3_transfer_success = data832_sam3_future.result() if data832_sam3_future else False
+    data832_dinov3_transfer_success = data832_dinov3_future.result() if data832_dinov3_future else False
+    data832_combined_transfer_success = data832_combined_future.result() if data832_combined_future else False
+
+    logger.info(
+        f"Transfer results — tiff: {data832_tiff_transfer_success}, "
+        f"sam3: {data832_sam3_transfer_success}, dino: {data832_dinov3_transfer_success}, "
+        f"combined: {data832_combined_transfer_success}"
+    )
 
     # ── STEP 6: Pruning ───────────────────────────────────────────────────────
     logger.info("Scheduling file pruning tasks.")

@@ -614,9 +614,9 @@ def test_petiole_segment_flow_both_succeed(mocker, mock_config832, mock_recon_su
     mock_controller.reconstruct.return_value = mock_recon_success
     mocker.patch("orchestration.flows.bl832.nersc.get_controller", return_value=mock_controller)
 
-    mock_transfer = mocker.MagicMock()
-    mock_transfer.copy.return_value = True
-    mocker.patch("orchestration.flows.bl832.nersc.get_transfer_controller", return_value=mock_transfer)
+    mock_globus_transfer = mocker.patch("orchestration.flows.bl832.nersc.globus_transfer_task")
+    mock_globus_transfer.submit.return_value = _make_future(mocker, True)
+
     mocker.patch("orchestration.flows.bl832.nersc.get_prune_controller", return_value=mocker.MagicMock())
 
     mock_sam3_task = mocker.patch("orchestration.flows.bl832.nersc.nersc_segmentation_sam3_task")
@@ -646,9 +646,9 @@ def test_petiole_segment_flow_only_sam3_succeeds(mocker, mock_config832, mock_re
     mock_controller.reconstruct.return_value = mock_recon_success
     mocker.patch("orchestration.flows.bl832.nersc.get_controller", return_value=mock_controller)
 
-    mock_transfer = mocker.MagicMock()
-    mock_transfer.copy.return_value = True
-    mocker.patch("orchestration.flows.bl832.nersc.get_transfer_controller", return_value=mock_transfer)
+    mock_globus_transfer = mocker.patch("orchestration.flows.bl832.nersc.globus_transfer_task")
+    mock_globus_transfer.submit.return_value = _make_future(mocker, True)
+
     mocker.patch("orchestration.flows.bl832.nersc.get_prune_controller", return_value=mocker.MagicMock())
 
     mock_sam3_task = mocker.patch("orchestration.flows.bl832.nersc.nersc_segmentation_sam3_task")
@@ -674,9 +674,9 @@ def test_petiole_segment_flow_both_seg_fail(mocker, mock_config832, mock_recon_s
     mock_controller.reconstruct.return_value = mock_recon_success
     mocker.patch("orchestration.flows.bl832.nersc.get_controller", return_value=mock_controller)
 
-    mock_transfer = mocker.MagicMock()
-    mock_transfer.copy.return_value = False
-    mocker.patch("orchestration.flows.bl832.nersc.get_transfer_controller", return_value=mock_transfer)
+    mock_globus_transfer = mocker.patch("orchestration.flows.bl832.nersc.globus_transfer_task")
+    mock_globus_transfer.submit.return_value = _make_future(mocker, False)
+
     mocker.patch("orchestration.flows.bl832.nersc.get_prune_controller", return_value=mocker.MagicMock())
 
     mock_sam3_task = mocker.patch("orchestration.flows.bl832.nersc.nersc_segmentation_sam3_task")
@@ -701,7 +701,7 @@ def test_petiole_segment_flow_recon_failure(mocker, mock_config832):
     mock_controller = mocker.MagicMock()
     mock_controller.reconstruct.return_value = {"success": False, "job_id": None, "timing": None}
     mocker.patch("orchestration.flows.bl832.nersc.get_controller", return_value=mock_controller)
-    mocker.patch("orchestration.flows.bl832.nersc.get_transfer_controller", return_value=mocker.MagicMock())
+    mocker.patch("orchestration.flows.bl832.nersc.globus_transfer_task")
     mocker.patch("orchestration.flows.bl832.nersc.get_prune_controller", return_value=mocker.MagicMock())
 
     with pytest.raises(ValueError, match="Reconstruction at NERSC Failed"):
