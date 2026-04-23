@@ -445,13 +445,6 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
             response.raise_for_status()
             return str(response.json()["id"])
 
-            # response = self.client.post(
-            #     "/api/v1/compute/job/3cf3c048-855e-4dd8-a189-065a483954bb",
-            #     json=job_spec,
-            # )
-            # response.raise_for_status()
-            # return str(response.json()["id"])
-
         else:
             raise ValueError(f"Unhandled NERSCLoginMethod: {self.login_method}")
 
@@ -2747,7 +2740,6 @@ def nersc_segmentation_sam3_integration_test() -> bool:
     flow_success = nersc_segmentation_sam3_task(
         recon_folder_path=recon_folder_path,
         config=Config832(),
-        login_method=NERSCLoginMethod.IRIAPI
     )
     logger.info(f"Flow success: {flow_success}")
     return flow_success
