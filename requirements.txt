@@ -1,4 +1,4 @@
-authlib
+authlib==1.6.1
 dynaconf
 globus-compute-sdk @ git+https://github.com/globus/globus-compute.git@d1731340074be56861ec91d732bdff44f8e2b46e#subdirectory=compute_sdk
 globus-sdk>=3.0
