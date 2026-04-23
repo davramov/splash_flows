@@ -212,7 +212,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
     @staticmethod
     def create_nersc_client(
         login_method: NERSCLoginMethod = NERSCLoginMethod.SFAPI,
-    ) -> Client:
+    ) -> Client | httpx.Client:
         """Create and return a NERSC client for the requested login method.
 
         Two fundamentally different auth strategies are supported:
@@ -258,7 +258,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
         return client
 
     @staticmethod
-    def _create_iriapi_client() -> Client:
+    def _create_iriapi_client() -> httpx.Client:
         """Create a NERSC client for the IRI API using a Globus bearer token.
 
         Requires ``GLOBUS_CLIENT_ID`` and ``GLOBUS_CLIENT_SECRET`` in the
@@ -266,7 +266,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
         via the client credentials grant. No browser or user interaction.
 
         Returns:
-            An authenticated :class:`sfapi_client.Client` targeting the IRI API.
+            An authenticated :class:`httpx.Client` targeting the IRI API.
 
         Raises:
             ValueError: If ``GLOBUS_CLIENT_ID`` or ``GLOBUS_CLIENT_SECRET`` are unset.
@@ -445,18 +445,12 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
                 "arguments": ["-s"],       # read script from stdin isn't supported, so...
                 "pre_launch": script_body,  # run the body here before the executable
                 "resources": resources,
-                # {
-                # "node_count": sbatch_values.get("node_count", 1),
-                # "processes_per_node": 1,
-                # "cpu_cores_per_process": 64,
-                # "exclusive_node_use": True,
-                # },
                 "attributes": {
                     "duration": sbatch_values.get("duration", 1800),
                     "queue_name": sbatch_values.get("queue_name", "regular"),
                     "account": sbatch_values.get("account", "als"),
                     "custom_attributes": {
-                        "constraint": constraint  # sbatch_values.get("constraint", "cpu")
+                        "constraint": constraint
                     },
                 },
             }
@@ -467,7 +461,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
                 job_spec["stderr_path"] = sbatch_values["stderr_path"]
 
             response = self.client.post(
-                "/api/v1/compute/job/3cf3c048-855e-4dd8-a189-065a483954bb",
+                f"/api/v1/compute/job/{RESOURCE_IDS['perlmutter_job_submit']}",
                 json=job_spec,
             )
             if not response.is_success:
@@ -475,13 +469,6 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
                 logger.error(f"Job spec was: {json.dumps(job_spec, indent=2)}")
             response.raise_for_status()
             return str(response.json()["id"])
-
-            # response = self.client.post(
-            #     "/api/v1/compute/job/3cf3c048-855e-4dd8-a189-065a483954bb",
-            #     json=job_spec,
-            # )
-            # response.raise_for_status()
-            # return str(response.json()["id"])
 
         else:
             raise ValueError(f"Unhandled NERSCLoginMethod: {self.login_method}")
@@ -1643,15 +1630,15 @@ echo "Completed at $(date)"
                 pscratch_path = f"/pscratch/sd/{username[0]}/{username}"
                 output_file = f"{pscratch_path}/tomo_recon_logs/shifter_check.txt"
                 check_script = f"""#!/bin/bash
-            #SBATCH -q debug
-            #SBATCH -A als
-            #SBATCH -C cpu
-            #SBATCH -N 1
-            #SBATCH --ntasks=1
-            #SBATCH --cpus-per-task=1
-            #SBATCH --time=0:05:00
-            shifterimg images | grep -E "$(echo {image} | sed 's/:/.*/g')" > {output_file} 2>&1 || true
-            """
+#SBATCH -q debug
+#SBATCH -A als
+#SBATCH -C cpu
+#SBATCH -N 1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --time=0:05:00
+shifterimg images | grep -E "$(echo {image} | sed 's/:/.*/g')" > {output_file} 2>&1 || true
+"""
                 job_id = self._submit_job(check_script)
                 self._wait_for_job(job_id)
                 output = self._read_remote_file(output_file)
@@ -2732,7 +2719,6 @@ def nersc_segmentation_sam3_integration_test() -> bool:
     flow_success = nersc_segmentation_sam3_task(
         recon_folder_path=recon_folder_path,
         config=Config832(),
-        login_method=NERSCLoginMethod.IRIAPI
     )
     logger.info(f"Flow success: {flow_success}")
     return flow_success
