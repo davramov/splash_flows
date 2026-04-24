@@ -479,6 +479,7 @@ def test_reconstruct_sfapi_submission_failure(mocker, mock_sfapi_client, mock_co
 def test_reconstruct_iriapi_success(mocker, mock_iriapi_client, mock_config832, monkeypatch):
     """IRIAPI reconstruct POSTs a job and polls for COMPLETED state."""
     from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
+    from orchestration.flows.bl832.nersc import RESOURCE_IDS, _IRI_COMPUTE_RESOURCE
 
     monkeypatch.setenv("NERSC_USERNAME", "alsdev")
     mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
