@@ -32,7 +32,7 @@ class Config832(BeamlineConfig):
         # SciCat
         self.scicat = self.config["scicat"]
         # MLflow
-        self.mlflow = self.config["mlflow"]["local"]
+        self.mlflow = self.config["mlflow"]["amsc"]
         # NERSC HPC submission settings
         self.ghcr_images832 = self.config["ghcr_images832"]
         self.nersc_recon_settings = self.config["hpc_submission_settings832"]["nersc_reconstruction"]

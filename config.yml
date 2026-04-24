@@ -185,6 +185,10 @@ mlflow:
   staging:
     tracking_uri: https://mlflow-staging.computing.als.lbl.gov
     registry_uri: https://mlflow-staging.computing.als.lbl.gov
+  amsc:
+    tracking_uri: https://mlflow.american-science-cloud.org/
+    registry_uri: https://mlflow.american-science-cloud.org/
+    experiment_name: als-bl832-models
 
 hpc_submission_settings832:
   # ── RECON + MULTIRES SETTINGS ───────────────────────────────────────────────

@@ -1,15 +1,22 @@
 import logging
 from dataclasses import dataclass, field
+from dotenv import load_dotenv
 import json
+import os
 import requests
 from typing import Any
 
 import mlflow
 from mlflow.tracking import MlflowClient
+import mlflow.utils.rest_utils as rest_utils
+
 
 from orchestration.config import BeamlineConfig
 
 logger = logging.getLogger(__name__)
+
+_AMSC_PATCH_FLAG: str = "_amsc_x_api_key_patched"
+load_dotenv()
 
 
 @dataclass
@@ -48,11 +55,61 @@ def _is_mlflow_reachable(tracking_uri: str, timeout: float = 2.0) -> bool:
     Returns:
         True if the server responds with HTTP 200, False otherwise.
     """
+    headers = {}
+    api_key = os.environ.get("AMSC_API_KEY")
+    if api_key:
+        headers["X-Api-Key"] = api_key
     try:
-        response = requests.get(f"{tracking_uri}/health", timeout=timeout)
+        response = requests.get(
+            f"{tracking_uri}/health", headers=headers, timeout=timeout
+        )
         return response.status_code == 200
     except Exception:
         return False
+
+
+def _enable_amsc_x_api_key() -> bool:
+    """Patch mlflow.utils.rest_utils.http_request to inject X-Api-Key.
+
+    Required by the American Science Cloud MLflow server, which enforces
+    API-key auth on all REST calls. Standard MLflow does not send custom
+    headers, so we wrap ``http_request`` at import time.
+
+    Idempotent: repeat calls are no-ops thanks to a sentinel attribute on
+    the wrapper. Silently skips patching if ``AMSC_API_KEY`` is unset,
+    which lets the same codebase target non-AMSC MLflow servers.
+
+    Returns:
+        True if the patch is (or was already) active, False if the API
+        key env var is unset.
+    """
+
+    api_key = os.environ.get("AMSC_API_KEY")
+    if not api_key:
+        return False
+
+    if getattr(rest_utils.http_request, _AMSC_PATCH_FLAG, False):
+        return True
+
+    original = rest_utils.http_request
+
+    def patched(host_creds, endpoint, method, *args, **kwargs):
+        # MLflow internals call http_request with either `headers` or
+        # `extra_headers` depending on the code path — handle both.
+        if "headers" in kwargs and kwargs["headers"] is not None:
+            h = dict(kwargs["headers"])
+            h["X-Api-Key"] = api_key
+            kwargs["headers"] = h
+        else:
+            h = dict(kwargs.get("extra_headers") or {})
+            h["X-Api-Key"] = api_key
+            kwargs["extra_headers"] = h
+        return original(host_creds, endpoint, method, *args, **kwargs)
+
+    setattr(patched, _AMSC_PATCH_FLAG, True)
+    rest_utils.http_request = patched
+    logger.info("AMSC X-Api-Key injection enabled for MLflow REST calls.")
+    return True
 
 
 def get_mlflow_client(config: BeamlineConfig) -> MlflowClient:
@@ -65,6 +122,7 @@ def get_mlflow_client(config: BeamlineConfig) -> MlflowClient:
         An authenticated MlflowClient instance.
     """
     tracking_uri = config.mlflow["tracking_uri"]
+    _enable_amsc_x_api_key()  # Idempotent patch for AMSC API key injection
     mlflow.set_tracking_uri(tracking_uri)
     return MlflowClient(tracking_uri=tracking_uri)
 
@@ -183,7 +241,19 @@ def register_checkpoint(
         client.create_registered_model(model_name)
 
     mlflow.set_tracking_uri(config.mlflow["tracking_uri"])
+
+    # Use a dedicated experiment so the creator (this user) gets MANAGE
+    # permission automatically — avoids 403 on the default experiment.
+    experiment_name = config.mlflow.get("experiment_name", "als-model-registration")
+    experiment = mlflow.get_experiment_by_name(experiment_name)
+    if experiment is None:
+        experiment_id = mlflow.create_experiment(experiment_name)
+        logger.info(f"Created MLflow experiment '{experiment_name}' (id={experiment_id}).")
+    else:
+        experiment_id = experiment.experiment_id
+
     with mlflow.start_run(
+        experiment_id=experiment_id,
         run_name=f"register_{model_name}",
         tags={"mlflow.note.content": description},
     ) as run:
@@ -247,7 +317,21 @@ def log_segmentation_metrics(
 
     run_tags: dict[str, str] = {"model": model_name, "slurm_job_id": job_id}
 
+    tracking_uri = config.mlflow["tracking_uri"]
+    mlflow.set_tracking_uri(tracking_uri)
+    _enable_amsc_x_api_key()  # ensure AMSC auth patch is active for this entrypoint too
+
+    experiment_name = config.mlflow.get("experiment_name", "als-model-registration")
+    experiment = mlflow.get_experiment_by_name(experiment_name)
+    if experiment is None:
+        experiment_id = mlflow.create_experiment(experiment_name)
+    else:
+        experiment_id = experiment.experiment_id
+
+    run_tags: dict[str, str] = {"model": model_name, "slurm_job_id": job_id}
+
     with mlflow.start_run(
+        experiment_id=experiment_id,
         run_name=run_name,
         nested=parent_run_id is not None,
         parent_run_id=parent_run_id,
