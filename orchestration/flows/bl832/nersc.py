@@ -520,7 +520,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
             perlmutter.run(f"mkdir -p {path}")
         elif self.login_method is NERSCLoginMethod.IRIAPI:
             response = self.client.post(
-                f"/api/v1/filesystem/mkdir/{RESOURCE_IDS["perlmutter_login"]}",
+                f"/api/v1/filesystem/mkdir/{RESOURCE_IDS['perlmutter_login']}",
                 json={"path": path, "parents": True},
             )
             response.raise_for_status()
