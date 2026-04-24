@@ -93,6 +93,82 @@ def register_mlflow_checkpoints():
         },
     )
 
+    # register_checkpoint(
+    #     model_name="sam3-petiole",
+    #     nersc_hf_home="/global/cfs/cdirs/als/data_mover/8.3.2/.cache/huggingface",
+    #     nersc_hf_hub_cache="/global/cfs/cdirs/als/data_mover/8.3.2/.cache/huggingface/hub",
+    #     nersc_path=f"{scripts_dir}sam3_finetune/sam3/checkpoint_v6.pt",
+    #     alcf_hf_home="/eagle/SYNAPS-I/segmentation/.cache/huggingface",
+    #     alcf_hf_hub_cache="/eagle/SYNAPS-I/segmentation/.cache/huggingface",
+    #     alcf_path="/eagle/SYNAPS-I/segmentation/sam3_finetune/sam3/checkpoint_v6.pt",
+    #     config=config,
+    #     alias="production",
+    #     description="SAM3 v6 fine-tuned on petiole micro-CT data.",
+    #     inference_params={
+    #         # ── paths ──────────────────────────────────────────────────────────
+    #         "original_checkpoint_path":
+    #         f"{scripts_dir}sam3_finetune/sam3/sam3.pt",
+    #         "bpe_path": f"{scripts_dir}sam3_finetune/sam3/bpe_simple_vocab_16e6.txt.gz",
+    #         "conda_env_path": "/global/cfs/cdirs/als/data_mover/8.3.2/envs/sam3-py311",
+    #         "seg_scripts_dir": f"{scripts_dir}inference_latest/forge_feb_seg_model_demo/",
+    #         "checkpoints_dir": f"{scripts_dir}sam3_finetune/sam3/",
+    #         # ── inference hyperparameters ───────────────────────────────────────
+    #         "script_name": "src/inference_v6.py",
+    #         "batch_size": 1,
+    #         "patch_size": 400,
+    #         "confidence": [0.5],       # list → JSON-encoded automatically
+    #         "overlap": 0.25,
+    #         "prompts": [               # list → JSON-encoded automatically
+    #             "Phloem Fibers",
+    #             "Hydrated Xylem vessels",
+    #             "Air-based Pith cells",
+    #             "Dehydrated Xylem vessels",
+    #         ],
+    #     },
+    # )
+
+    # register_checkpoint(
+    #     model_name="dinov3-petiole",
+    #     nersc_hf_home="/global/cfs/cdirs/als/data_mover/8.3.2/.cache/huggingface",
+    #     nersc_hf_hub_cache="/global/cfs/cdirs/als/data_mover/8.3.2/.cache/huggingface/hub",
+    #     nersc_checkpoint_path="/global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/dino/best.ckpt",
+    #     alcf_hf_home="/eagle/SYNAPS-I/segmentation/.cache/huggingface",
+    #     alcf_hf_hub_cache="/eagle/SYNAPS-I/segmentation/.cache/huggingface",
+    #     alcf_path="/eagle/SYNAPS-I/segmentation/dino/best.ckpt",
+    #     config=config,
+    #     alias="production",
+    #     description="DINOv3 fine-tuned on petiole micro-CT data.",
+    #     inference_params={
+    #         # ── paths ──────────────────────────────────────────────────────────
+    #         "conda_env_path": "/global/cfs/cdirs/als/data_mover/8.3.2/envs/dino_demo",
+    #         "seg_scripts_dir": f"{scripts_dir}inference_v5_multiseg/forge_feb_seg_model_demo/",
+    #         # ── inference hyperparameters ───────────────────────────────────────
+    #         "script_name": "src.inference_dino_v1",
+    #         "batch_size": 4,
+    #         "nproc_per_node": 4,
+    #     },
+    # )
+
+    # register_checkpoint(
+    #     model_name="dinov3-moon",
+    #     nersc_hf_home="/global/cfs/cdirs/als/data_mover/8.3.2/.cache/huggingface",
+    #     nersc_hf_hub_cache="/global/cfs/cdirs/als/data_mover/8.3.2/.cache/huggingface/hub",
+    #     nersc_path="/global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/dino/best_moon.ckpt",
+    #     alcf_hf_home="/eagle/SYNAPS-I/segmentation/.cache/huggingface",
+    #     alcf_hf_hub_cache="/eagle/SYNAPS-I/segmentation/.cache/huggingface",
+    #     alcf_path="/eagle/SYNAPS-I/segmentation/seg_models/dino/best_moon.ckpt",
+    #     config=config,
+    #     alias="production",
+    #     description="DINOv3 fine-tuned on lunar regolith micro-CT data (ice, particles, pores).",
+    #     inference_params={
+    #         "conda_env_path": "/global/cfs/cdirs/als/data_mover/8.3.2/envs/dino_demo",
+    #         "seg_scripts_dir": f"{scripts_dir}moon_seg/forge_feb_seg_model_demo/",
+    #         "script_name": "src.inference_dino_v2",
+    #         "batch_size": 4,
+    #         "nproc_per_node": 4,
+    #     },
+    # )
+
 
 def retrieve_mlflow_params_test() -> bool:
     """Test that _load_job_options correctly pulls inference params from the MLflow registry.
