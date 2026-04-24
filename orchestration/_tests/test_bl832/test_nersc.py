@@ -5,6 +5,8 @@ from uuid import uuid4
 from prefect.blocks.system import Secret
 from prefect.testing.utilities import prefect_test_harness
 
+from orchestration.flows.bl832.nersc import RESOURCE_IDS, _IRI_COMPUTE_RESOURCE
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Session fixture
@@ -445,18 +447,21 @@ def test_reconstruct_iriapi_success(mocker, mock_iriapi_client, mock_config832, 
     assert result["success"] is True
     assert result["job_id"] == "99999"
     mock_iriapi_client.post.assert_called_once()
-    assert mock_iriapi_client.post.call_args.args[0] == "/api/v1/compute/job/compute"
+    assert (
+        mock_iriapi_client.post.call_args.args[0]
+        == f"/api/v1/compute/job/{RESOURCE_IDS['perlmutter_job_submit']}"
+    )
     posted_json = mock_iriapi_client.post.call_args.kwargs["json"]
     assert posted_json["executable"] == "/bin/bash"
-    assert posted_json["arguments"][0] == "-c"
-    assert isinstance(posted_json["arguments"][1], str)  # the script body
-    assert "tomo_recon" in posted_json["arguments"][1]   # sanity check it's the right script
-    assert mock_iriapi_client.get.call_count == 2
+    assert posted_json["arguments"] == ["-s"]              # matches nersc.py
+    assert "pre_launch" in posted_json                     # script body lives here
+    assert "tomo_recon" in posted_json["pre_launch"]       # sanity check it's the right script
+
     mock_iriapi_client.get.assert_any_call(
-        "/api/v1/compute/status/compute/99999"
+        f"/api/v1/compute/status/{_IRI_COMPUTE_RESOURCE}/99999"
     )
     mock_iriapi_client.get.assert_any_call(
-        "/api/v1/filesystem/file/perlmutter",
+        f"/api/v1/filesystem/view/{RESOURCE_IDS['perlmutter_login']}",
         params={"path": mocker.ANY},
     )
 
