@@ -317,7 +317,7 @@ class GlobusPruneController(PruneController[GlobusEndpoint]):
 
         # globus_settings = JSON.load("globus-settings").value
         # max_wait_seconds = globus_settings["max_wait_seconds"]
-        flow_name = f"prune_from_{source_endpoint.name}"
+        flow_name = f"prune_{file_path}_from_{source_endpoint.name}"
         logger.info(f"Setting up pruning of '{file_path}' from '{source_endpoint.name}'")
 
         # convert float days → timedelta
