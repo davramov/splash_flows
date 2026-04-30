@@ -7,7 +7,7 @@ from pathlib import Path
 import shutil
 from typing import Generic, Optional, TypeVar
 
-from prefect import flow
+from prefect import flow, get_run_logger
 from prefect.variables import Variable
 
 from orchestration.config import BeamlineConfig
@@ -107,6 +107,7 @@ class FileSystemPruneController(PruneController[FileSystemEndpoint]):
         :param days_from_now: Delay in days before pruning; if 0.0, prune immediately. If <0, throws error.
         :return: True if pruning was successful or scheduled successfully, False otherwise
         """
+        logger = get_run_logger()
         if not file_path:
             logger.error("No file_path provided for pruning operation")
             return False
@@ -145,7 +146,7 @@ class FileSystemPruneController(PruneController[FileSystemEndpoint]):
                         f"in {days_from_now.total_seconds()/86400:.1f} days")
 
             try:
-                schedule_prefect_flow(
+                future = schedule_prefect_flow.submit(
                     deployment_name="prune_filesystem_endpoint/prune_filesystem_endpoint",
                     flow_run_name=flow_name,
                     parameters={
@@ -156,6 +157,7 @@ class FileSystemPruneController(PruneController[FileSystemEndpoint]):
                     },
                     duration_from_now=days_from_now,
                 )
+                future.result()
                 logger.info(f"Successfully scheduled pruning task for {days_from_now.total_seconds()/86400:.1f} days from now")
                 return True
             except Exception as e:
@@ -300,6 +302,7 @@ class GlobusPruneController(PruneController[GlobusEndpoint]):
         :param days_from_now: Delay before pruning; if 0, prune immediately. If <0, throws error.
         :return: True if pruning was successful or scheduled successfully, False otherwise
         """
+        logger = get_run_logger()
         if not file_path:
             logger.error("No file_path provided for pruning operation")
             return False
@@ -314,7 +317,7 @@ class GlobusPruneController(PruneController[GlobusEndpoint]):
 
         # globus_settings = JSON.load("globus-settings").value
         # max_wait_seconds = globus_settings["max_wait_seconds"]
-        flow_name = f"prune_from_{source_endpoint.name}"
+        flow_name = f"prune_{file_path}_from_{source_endpoint.name}"
         logger.info(f"Setting up pruning of '{file_path}' from '{source_endpoint.name}'")
 
         # convert float days → timedelta
@@ -340,17 +343,17 @@ class GlobusPruneController(PruneController[GlobusEndpoint]):
                         f"in {days_from_now.total_seconds()/86400:.1f} days")
 
             try:
-                schedule_prefect_flow.submit(
+                future = schedule_prefect_flow.submit(
                     deployment_name="prune_globus_endpoint/prune_globus_endpoint",
                     flow_run_name=flow_name,
                     parameters={
                         "relative_path": file_path,
                         "source_endpoint": source_endpoint,
                         "check_endpoint": check_endpoint,
-                        # "config": self.config
                     },
                     duration_from_now=days_from_now,
                 )
+                future.result()
                 logger.info(f"Successfully scheduled pruning task for {days_from_now.total_seconds()/86400:.1f} days from now")
                 return True
             except Exception as e:
@@ -358,7 +361,7 @@ class GlobusPruneController(PruneController[GlobusEndpoint]):
                 return False
 
 
-@flow(name="prune_globus_endpoint")
+@flow(name="prune_globus_endpoint", flow_run_name="prune_{relative_path}_from_{source_endpoint.name}")
 def prune_globus_endpoint(
     relative_path: str,
     source_endpoint: GlobusEndpoint,
