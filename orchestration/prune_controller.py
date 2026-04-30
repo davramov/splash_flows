@@ -349,7 +349,6 @@ class GlobusPruneController(PruneController[GlobusEndpoint]):
                         "relative_path": file_path,
                         "source_endpoint": source_endpoint,
                         "check_endpoint": check_endpoint,
-                        # "config": self.config
                     },
                     duration_from_now=days_from_now,
                 )
