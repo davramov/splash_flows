@@ -7,7 +7,7 @@ from pathlib import Path
 import shutil
 from typing import Generic, Optional, TypeVar
 
-from prefect import flow
+from prefect import flow, get_run_logger
 from prefect.variables import Variable
 
 from orchestration.config import BeamlineConfig
@@ -107,6 +107,7 @@ class FileSystemPruneController(PruneController[FileSystemEndpoint]):
         :param days_from_now: Delay in days before pruning; if 0.0, prune immediately. If <0, throws error.
         :return: True if pruning was successful or scheduled successfully, False otherwise
         """
+        logger = get_run_logger()
         if not file_path:
             logger.error("No file_path provided for pruning operation")
             return False
@@ -340,7 +341,7 @@ class GlobusPruneController(PruneController[GlobusEndpoint]):
                         f"in {days_from_now.total_seconds()/86400:.1f} days")
 
             try:
-                schedule_prefect_flow.submit(
+                future = schedule_prefect_flow.submit(
                     deployment_name="prune_globus_endpoint/prune_globus_endpoint",
                     flow_run_name=flow_name,
                     parameters={
@@ -351,6 +352,7 @@ class GlobusPruneController(PruneController[GlobusEndpoint]):
                     },
                     duration_from_now=days_from_now,
                 )
+                future.result()
                 logger.info(f"Successfully scheduled pruning task for {days_from_now.total_seconds()/86400:.1f} days from now")
                 return True
             except Exception as e:
