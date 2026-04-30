@@ -146,7 +146,7 @@ class FileSystemPruneController(PruneController[FileSystemEndpoint]):
                         f"in {days_from_now.total_seconds()/86400:.1f} days")
 
             try:
-                schedule_prefect_flow(
+                future = schedule_prefect_flow(
                     deployment_name="prune_filesystem_endpoint/prune_filesystem_endpoint",
                     flow_run_name=flow_name,
                     parameters={
@@ -157,6 +157,7 @@ class FileSystemPruneController(PruneController[FileSystemEndpoint]):
                     },
                     duration_from_now=days_from_now,
                 )
+                future.result()
                 logger.info(f"Successfully scheduled pruning task for {days_from_now.total_seconds()/86400:.1f} days from now")
                 return True
             except Exception as e:
