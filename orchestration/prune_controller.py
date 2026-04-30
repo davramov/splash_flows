@@ -146,7 +146,7 @@ class FileSystemPruneController(PruneController[FileSystemEndpoint]):
                         f"in {days_from_now.total_seconds()/86400:.1f} days")
 
             try:
-                future = schedule_prefect_flow(
+                future = schedule_prefect_flow.submit(
                     deployment_name="prune_filesystem_endpoint/prune_filesystem_endpoint",
                     flow_run_name=flow_name,
                     parameters={
