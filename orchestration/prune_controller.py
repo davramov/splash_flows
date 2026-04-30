@@ -361,7 +361,7 @@ class GlobusPruneController(PruneController[GlobusEndpoint]):
                 return False
 
 
-@flow(name="prune_globus_endpoint")
+@flow(name="prune_globus_endpoint", flow_run_name="prune_{relative_path}_from_{source_endpoint.name}")
 def prune_globus_endpoint(
     relative_path: str,
     source_endpoint: GlobusEndpoint,
