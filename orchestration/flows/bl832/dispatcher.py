@@ -246,17 +246,6 @@ if __name__ == "__main__":
             nersc_forge_recon_multisegment=False,
             new_file_832=True
         )
-        # Run the main decision flow with the specified parameters
-        # asyncio.run(dispatcher(
-        #     config={},  # PYTEST, ALCF, NERSC
-        #     is_export_control=False,  # ALCF & MOVE
-        #     folder_name="folder",  # ALCF
-        #     file_name="file",  # ALCF
-        #     file_path="/path/to/file",  # MOVE
-        #     send_to_alcf=True,  # ALCF
-        #     send_to_nersc=True,  # MOVE
-        #     )
-        # )
     except Exception as e:
         logger = get_run_logger()
         logger.error(f"Failed to execute main flow: {e}")
