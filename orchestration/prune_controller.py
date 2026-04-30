@@ -301,6 +301,7 @@ class GlobusPruneController(PruneController[GlobusEndpoint]):
         :param days_from_now: Delay before pruning; if 0, prune immediately. If <0, throws error.
         :return: True if pruning was successful or scheduled successfully, False otherwise
         """
+        logger = get_run_logger()
         if not file_path:
             logger.error("No file_path provided for pruning operation")
             return False
