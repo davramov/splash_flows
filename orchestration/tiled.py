@@ -22,9 +22,8 @@ async def register_file_to_tiled(
     logger = get_run_logger()
     load_dotenv()
     tiled_uri = os.environ["TILED_URI"]
-    tiled_api_key = os.environ["TILED_API_KEY"]
 
-    client = from_uri(tiled_uri, api_key=tiled_api_key)
+    client = from_uri(tiled_uri)
 
     logger.info(f"Registering {path} to Tiled catalog at {tiled_uri} with prefix {prefix!r}")
     try:
