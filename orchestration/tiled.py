@@ -81,6 +81,62 @@ async def register_file_to_tiled(
             )
 
 
+@task(name="check-tiled-tags", task_run_name="check-tags-{path}")
+def check_tags(
+    path: Path | str,
+    prefix: str,
+    expected_tags: set[str],
+) -> tuple[bool, list[str]]:
+    """Check whether a registered dataset has the expected tags applied.
+
+    Navigates to the entry corresponding to ``path`` under ``prefix`` in the
+    Tiled catalog and compares its ``access_blob.tags`` against ``expected_tags``.
+
+    For TIFF directories (a directory with no suffix), the first child entry
+    under the prefix node is checked, since ``register`` registers each TIFF
+    file flat into the prefix node.
+
+    Args:
+        path: Path to the file or store that was registered.
+        prefix: Sub-path within the Tiled catalog where the entry was registered.
+        expected_tags: Tags that must be present on the entry.
+
+    Returns:
+        A tuple ``(ok, actual_tags)`` where ``ok`` is True iff every tag in
+        ``expected_tags`` is present in the entry's ``access_blob.tags``.
+
+    Raises:
+        KeyError: If the entry cannot be located under ``prefix``.
+    """
+    logger = get_run_logger()
+    load_dotenv()
+    path = Path(path)
+    tiled_uri = os.environ["TILED_URI"]
+    client = from_uri(tiled_uri)
+
+    # Navigate to the prefix node
+    node = client
+    for segment in prefix.strip("/").split("/"):
+        if segment:
+            node = node[segment]
+
+    # For TIFF directories, register flattens files into the prefix node;
+    # for .h5 / .zarr, the entry is keyed by the path stem.
+    if path.is_dir() and not path.suffix:
+        key = next(iter(node))
+        node = node[key]
+    else:
+        node = node[path.stem]
+
+    actual = node.access_blob.get("tags", []) if node.access_blob else []
+    ok = expected_tags <= set(actual)
+    logger.info(
+        f"{path.name} under {prefix!r}: "
+        f"expected={sorted(expected_tags)} actual={actual} ok={ok}"
+    )
+    return ok, actual
+
+
 @flow(name="register-to-tiled", flow_run_name="register-{path}")
 async def register_to_tiled(
     path: Path | str,
@@ -94,6 +150,7 @@ async def register_to_tiled(
         path: Path to the file or Zarr store (client filesystem).
         prefix: Optional sub-path within the Tiled catalog.
         overwrite: Whether to overwrite existing entries in the Tiled catalog.
+        tags: Optional list of tags to apply to the registered entry.
     """
     logger = get_run_logger()
     path = Path(path)
@@ -104,25 +161,20 @@ async def register_to_tiled(
 if __name__ == "__main__":
     import asyncio
 
-    h5 = Path("/Users/david/Documents/data/tomo/raw/20241216_154449_ddd.h5")
-    tiffs = Path("/Users/david/Documents/data/tomo/rec20230224_132553_sea_shell/")
-    zarr = Path("/Users/david/Documents/data/tomo/scratch/rec20230606_152011_jong-seto_fungal-mycelia_flat-AQ_fungi2_fast.zarr")
-
-    asyncio.run(register_to_tiled(path=h5, prefix="beamlines/bl832/raw/", tags=["bl832"], overwrite=False))
-    asyncio.run(register_to_tiled(path=tiffs, prefix="beamlines/bl832/scratch", tags=["bl832", "dabramov"], overwrite=False))
-    asyncio.run(register_to_tiled(path=zarr, prefix="beamlines/bl832/scratch", tags=["bl832"], overwrite=False))
-
     load_dotenv()
-    client = from_uri(os.environ["TILED_URI"])
-    checks = [
-        (client["beamlines"]["bl832"]["raw"][h5.stem], ["bl832"], h5),
-        (client["beamlines"]["bl832"]["scratch"], ["bl832", "dabramov"], tiffs),
-        (client["beamlines"]["bl832"]["scratch"][zarr.stem], ["bl832"], zarr),
+    h5 = Path(os.environ["EXAMPLE_H5_PATH"])
+    tiffs = Path(os.environ["EXAMPLE_TIFFS_PATH"])
+    zarr = Path(os.environ["EXAMPLE_ZARR_PATH"])
+
+    cases = [
+        (h5,    "beamlines/bl832/raw/",     {"bl832"}),
+        (tiffs, "beamlines/bl832/scratch",  {"bl832", "dabramov"}),
+        (zarr,  "beamlines/bl832/scratch",  {"bl832"}),
     ]
-    for node, expected_tags, check_path in checks:
-        if check_path.is_dir() and not check_path.suffix:
-            key = next(iter(node))
-            node = node[key]
-        actual = node.access_blob.get("tags", [])
-        status = "✓" if set(expected_tags) <= set(actual) else "✗"
-        print(f"{status} {node.uri}: tags={actual}")    # prefix should be beamlines/bl832/raw/<project>/<filename>
+
+    for path, prefix, tags in cases:
+        asyncio.run(register_to_tiled(path=path, prefix=prefix, tags=list(tags), overwrite=False))
+
+    for path, prefix, expected in cases:
+        ok, actual = check_tags.fn(path, prefix, expected)
+        print(f"{'✓' if ok else '✗'} {path.name}: expected={sorted(expected)} actual={actual}")
