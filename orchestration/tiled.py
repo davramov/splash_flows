@@ -12,6 +12,9 @@ from tiled.client import from_uri
 from tiled.client.register import register
 
 
+load_dotenv()
+
+
 @task(name="register-file-to-tiled", task_run_name="register-{path}")
 async def register_file_to_tiled(
     path: Path,
@@ -20,7 +23,6 @@ async def register_file_to_tiled(
     tags: list[str] | None = None,
 ) -> None:
     logger = get_run_logger()
-    load_dotenv()
     tiled_uri = os.environ["TILED_URI"]
 
     client = from_uri(tiled_uri)
@@ -109,7 +111,6 @@ def check_tags(
         KeyError: If the entry cannot be located under ``prefix``.
     """
     logger = get_run_logger()
-    load_dotenv()
     path = Path(path)
     tiled_uri = os.environ["TILED_URI"]
     client = from_uri(tiled_uri)
