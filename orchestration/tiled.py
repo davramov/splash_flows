@@ -44,19 +44,6 @@ async def register_file_to_tiled(
     if not tags:
         return
 
-    def _apply_tags(entry_node):
-        existing_blob = entry_node.access_blob
-        existing_tags = (existing_blob or {}).get("tags", [])
-        merged_tags = list(set(existing_tags) | set(tags))
-        op = "replace" if existing_blob is not None else "add"
-        try:
-            entry_node.patch_metadata(
-                access_blob_patch=[{"op": op, "path": "", "value": {"tags": merged_tags}}],
-            )
-            logger.info(f"Tagged {entry_node.uri} with {merged_tags}")
-        except Exception as e:
-            logger.warning(f"Could not tag {entry_node.uri}: {e}")
-
     # Navigate to prefix node after registration
     node = client
     for segment in (prefix or "").strip("/").split("/"):
@@ -66,14 +53,14 @@ async def register_file_to_tiled(
     if path.is_dir() and not path.suffix:
         # TIFF directory: Tiled registers each file flat into the prefix node
         for key in node:
-            _apply_tags(node[key])
+            _apply_tags(entry_node=node[key], tags=tags)
     else:
         # .h5 or .zarr: registered as single node, keyed by stem
         # Even on COLLISION the entry exists — just try it directly
         entry_key = path.stem
         logger.info(f"Looking up entry key {entry_key!r} under {prefix!r}")
         try:
-            _apply_tags(node[entry_key])
+            _apply_tags(entry_node=node[entry_key], tags=tags)
         except KeyError:
             # Key not found even after registration — log all available keys to diagnose
             available = sorted(node)
@@ -81,6 +68,24 @@ async def register_file_to_tiled(
                 f"Entry {entry_key!r} not found under {prefix!r}. "
                 f"Available keys: {available}"
             )
+
+
+@task(name="apply-tags", task_run_name="apply-tags-{tags}")
+def _apply_tags(entry_node, tags: list[str]) -> None:
+    logger = get_run_logger()
+    existing_blob = entry_node.access_blob
+    existing_tags = (existing_blob or {}).get("tags", [])
+    merged_tags = list(set(existing_tags) | set(tags))
+    op = "replace" if existing_blob is not None else "add"
+    try:
+        # entry_node.update_metadata(access_tags=merged_tags)
+        entry_node.patch_metadata(
+            access_blob_patch=[{"op": op, "path": "", "value": {"tags": merged_tags}}],
+        )
+
+        logger.debug(f"Tagged {entry_node.uri} with {merged_tags}")
+    except Exception as e:
+        logger.debug(f"Could not tag {entry_node.uri}: {e}")
 
 
 @task(name="check-tiled-tags", task_run_name="check-tags-{path}")
@@ -162,7 +167,6 @@ async def register_to_tiled(
 if __name__ == "__main__":
     import asyncio
 
-    load_dotenv()
     h5 = Path(os.environ["EXAMPLE_H5_PATH"])
     tiffs = Path(os.environ["EXAMPLE_TIFFS_PATH"])
     zarr = Path(os.environ["EXAMPLE_ZARR_PATH"])
@@ -177,5 +181,5 @@ if __name__ == "__main__":
         asyncio.run(register_to_tiled(path=path, prefix=prefix, tags=list(tags), overwrite=False))
 
     for path, prefix, expected in cases:
-        ok, actual = check_tags.fn(path, prefix, expected)
+        ok, actual = check_tags(path, prefix, expected)
         print(f"{'✓' if ok else '✗'} {path.name}: expected={sorted(expected)} actual={actual}")
