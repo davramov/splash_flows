@@ -1697,24 +1697,31 @@ def nersc_recon_flow(
         config=config,
     )
 
+    logger.info("Copy from NERSC /global/cfs/cdirs/als/data_mover/8.3.2/scratch to beegfs")
+    nersc_to_beegfs_tiff_future = globus_transfer_task.submit(
+        file_path=tiff_file_path,
+        source=config.nersc832_alsdev_pscratch_scratch,
+        destination=config.beegfs_scratch
+    )
+
+    nersc_to_beegfs_zarr_future = globus_transfer_task.submit(
+        file_path=zarr_file_path,
+        source=config.nersc832_alsdev_pscratch_scratch,
+        destination=config.beegfs_scratch
+    )
+
     # Resolve before pruning (which needs to know what landed where)
     pscratch_to_cfs_tiff_future.result()
     pscratch_to_cfs_zarr_future.result()
     pscratch_to_data832_tiff_future.result()
     pscratch_to_data832_zarr_future.result()
+    nersc_to_beegfs_tiff_future.result()
+    nersc_to_beegfs_zarr_future.result()
     logger.info("All transfers complete.")
-
-    logger.info("Scheduling pruning tasks.")
-    schedule_pruning(
-        config=config,
-        raw_file_path=file_path,
-        tiff_file_path=tiff_file_path,
-        zarr_file_path=zarr_file_path
-    )
 
     # Register the reconstructed TIFFs in tiled
     register_file_to_tiled(
-        path=config.beegfs_raw.root_path+tiff_file_path,
+        path=Path(config.beegfs_scratch.root_path+tiff_file_path),
         prefix="beamlines/bl832/scratch",
         overwrite=False,
         tags=["scratch", "bl832"],
@@ -1722,10 +1729,18 @@ def nersc_recon_flow(
 
     # Register the reconstructed ZARRs in tiled
     register_file_to_tiled(
-        path=config.beegfs_raw.root_path+zarr_file_path,
+        path=Path(config.beegfs_scratch.root_path+zarr_file_path),
         prefix="beamlines/bl832/scratch",
         overwrite=False,
         tags=["scratch", "bl832"],
+    )
+
+    logger.info("Scheduling pruning tasks.")
+    schedule_pruning(
+        config=config,
+        raw_file_path=file_path,
+        tiff_file_path=tiff_file_path,
+        zarr_file_path=zarr_file_path
     )
 
     # TODO: Ingest into SciCat
