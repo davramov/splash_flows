@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 from prefect import flow, get_run_logger, task
+from prefect.utilities.asyncutils import run_coro_as_sync
 from tiled.client import from_uri
 from tiled.client.register import register
 
@@ -16,24 +17,27 @@ load_dotenv()
 
 
 @task(name="register-file-to-tiled", task_run_name="register-{path}")
-async def register_file_to_tiled(
-    path: Path,
+def register_file_to_tiled(
+    path: Path | str,
     prefix: str | None = None,
     overwrite: bool = False,
     tags: list[str] | None = None,
 ) -> None:
     logger = get_run_logger()
+    path = Path(path)
     tiled_uri = os.environ["TILED_URI"]
 
     client = from_uri(tiled_uri)
 
     logger.info(f"Registering {path} to Tiled catalog at {tiled_uri} with prefix {prefix!r}")
     try:
-        await register(
-            node=client,
-            path=path,
-            prefix=prefix or "/",
-            overwrite=overwrite,
+        run_coro_as_sync(  # Bridge synchronous Prefect task to async Tiled client method
+            register(
+                node=client,
+                path=path,
+                prefix=prefix or "/",
+                overwrite=overwrite,
+            )
         )
     except Exception as e:
         raise RuntimeError(
@@ -144,7 +148,7 @@ def check_tags(
 
 
 @flow(name="register-to-tiled", flow_run_name="register-{path}")
-async def register_to_tiled(
+def register_to_tiled(
     path: Path | str,
     prefix: str | None = None,
     overwrite: bool = False,
@@ -161,12 +165,10 @@ async def register_to_tiled(
     logger = get_run_logger()
     path = Path(path)
     logger.info(f"Submitting task: register {path} to Tiled (prefix={prefix!r})")
-    await register_file_to_tiled(path, prefix=prefix, overwrite=overwrite, tags=tags)
+    register_file_to_tiled(path, prefix=prefix, overwrite=overwrite, tags=tags)
 
 
 if __name__ == "__main__":
-    import asyncio
-
     h5 = Path(os.environ["EXAMPLE_H5_PATH"])
     tiffs = Path(os.environ["EXAMPLE_TIFFS_PATH"])
     zarr = Path(os.environ["EXAMPLE_ZARR_PATH"])
@@ -178,7 +180,7 @@ if __name__ == "__main__":
     ]
 
     for path, prefix, tags in cases:
-        asyncio.run(register_to_tiled(path=path, prefix=prefix, tags=list(tags), overwrite=False))
+        register_to_tiled(path=path, prefix=prefix, tags=list(tags), overwrite=False)
 
     for path, prefix, expected in cases:
         ok, actual = check_tags(path, prefix, expected)

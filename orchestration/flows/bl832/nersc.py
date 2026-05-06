@@ -1713,22 +1713,20 @@ def nersc_recon_flow(
     )
 
     # Register the reconstructed TIFFs in tiled
-    tiled_tiffs_future = register_file_to_tiled(
+    register_file_to_tiled(
         path=config.beegfs_raw.root_path+tiff_file_path,
         prefix="beamlines/bl832/scratch",
         overwrite=False,
         tags=["scratch", "bl832"],
     )
-    tiled_tiffs_future = tiled_tiffs_future.result()
 
     # Register the reconstructed ZARRs in tiled
-    tiled_zarr_future = register_file_to_tiled(
+    register_file_to_tiled(
         path=config.beegfs_raw.root_path+zarr_file_path,
         prefix="beamlines/bl832/scratch",
         overwrite=False,
         tags=["scratch", "bl832"],
     )
-    tiled_zarr_future = tiled_zarr_future.result()
 
     # TODO: Ingest into SciCat
     if nersc_reconstruction_success:

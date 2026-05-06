@@ -171,14 +171,13 @@ def process_new_832_file_task(
     )
     logger.info(f"File successfully transferred from data832 to beegfs {file_path}")
 
-    tiled_future = register_file_to_tiled(
-        path=config.beegfs_raw.root_path+relative_path,
+    register_file_to_tiled(
+        path=Path(config.beegfs_raw.root_path+relative_path),
         prefix="beamlines/bl832/raw",
         overwrite=False,
         tags=["raw", "bl832"],
     )
     # TODO: find proposal id in h5, make that a tag
-    tiled_future.result()  # wait for registration to complete before scheduling deletes
 
     logger.info("Initializing prune controller")
     prune_controller = get_prune_controller(
