@@ -18,12 +18,14 @@ from typing import Any, Optional
 from orchestration.flows.bl832.config import Config832
 from orchestration.flows.bl832.job_controller import get_controller, HPC, TomographyHPCController
 from orchestration.mlflow import get_checkpoint_info
-from orchestration.prune_controller import get_prune_controller, PruneMethod
-from orchestration.transfer_controller import globus_transfer_task
 from orchestration.flows.bl832.streaming_mixin import (
     NerscStreamingMixin, SlurmJobBlock, cancellation_hook, monitor_streaming_job, save_block
 )
 from orchestration.prefect import schedule_prefect_flow
+from orchestration.prune_controller import get_prune_controller, PruneMethod
+from orchestration.tiled import register_file_to_tiled
+from orchestration.transfer_controller import globus_transfer_task
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -1709,6 +1711,24 @@ def nersc_recon_flow(
         tiff_file_path=tiff_file_path,
         zarr_file_path=zarr_file_path
     )
+
+    # Register the reconstructed TIFFs in tiled
+    tiled_tiffs_future = register_file_to_tiled(
+        path=config.beegfs_raw.root_path+tiff_file_path,
+        prefix="beamlines/bl832/scratch",
+        overwrite=False,
+        tags=["scratch", "bl832"],
+    )
+    tiled_tiffs_future = tiled_tiffs_future.result()
+
+    # Register the reconstructed ZARRs in tiled
+    tiled_zarr_future = register_file_to_tiled(
+        path=config.beegfs_raw.root_path+zarr_file_path,
+        prefix="beamlines/bl832/scratch",
+        overwrite=False,
+        tags=["scratch", "bl832"],
+    )
+    tiled_zarr_future = tiled_zarr_future.result()
 
     # TODO: Ingest into SciCat
     if nersc_reconstruction_success:
