@@ -1183,9 +1183,15 @@ exit $SEG_STATUS
             mlflow_checkpoint_key=spec.mlflow_checkpoint_key,
         )
 
-        extra_flags = "\n".join(
-            f"    {flag} {value} \\" for flag, value in spec.extra_cli_flags.items()
-        )
+        # extra_flags = "\n".join(
+        #     f"    {flag} {value} \\" for flag, value in spec.extra_cli_flags.items()
+        # )
+
+        tail_args: list[str] = []
+        for flag, value in spec.extra_cli_flags.items():
+            tail_args.append(f"{flag} {value}")
+        tail_args.append("--save-overlay")
+        extra_flags = " \\\n    ".join(tail_args)
 
         cfs_path = opts["cfs_path"]
         conda_env_path = opts["conda_env_path"]
@@ -1282,7 +1288,6 @@ srun --ntasks-per-node=1 --gpus-per-task=4 \\
     --batch-size {batch_size} \\
     --finetuned-checkpoint "{dino_checkpoint}" \\
     {extra_flags}
-    --save-overlay
 
 SEG_STATUS=$?
 
