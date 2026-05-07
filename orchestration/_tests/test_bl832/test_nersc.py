@@ -239,11 +239,15 @@ def test_create_sfapi_client_missing_files(mocker):
 # ──────────────────────────────────────────────────────────────────────────────
 
 def test_build_multi_resolution_success(mocker, mock_sfapi_client, mock_config832):
-    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController
+    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
     from sfapi_client.compute import Machine
 
     mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
-    controller = NERSCTomographyHPCController(client=mock_sfapi_client, config=mock_config832)
+    controller = NERSCTomographyHPCController(
+        client=mock_sfapi_client,
+        config=mock_config832,
+        login_method=NERSCLoginMethod.SFAPI,
+    )
 
     result = controller.build_multi_resolution(file_path="folder/file.h5")
 
@@ -255,11 +259,15 @@ def test_build_multi_resolution_success(mocker, mock_sfapi_client, mock_config83
 
 
 def test_build_multi_resolution_submission_failure(mocker, mock_sfapi_client, mock_config832):
-    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController
+    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
 
     mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
     mock_sfapi_client.compute.return_value.submit_job.side_effect = Exception("Submission failed")
-    controller = NERSCTomographyHPCController(client=mock_sfapi_client, config=mock_config832)
+    controller = NERSCTomographyHPCController(
+        client=mock_sfapi_client,
+        config=mock_config832,
+        login_method=NERSCLoginMethod.SFAPI,
+    )
 
     result = controller.build_multi_resolution(file_path="folder/file.h5")
 
@@ -271,12 +279,16 @@ def test_build_multi_resolution_submission_failure(mocker, mock_sfapi_client, mo
 # ──────────────────────────────────────────────────────────────────────────────
 
 def test_segmentation_sam3_success(mocker, mock_sfapi_client, mock_config832):
-    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController
+    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
     from sfapi_client.compute import Machine
 
     mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
     mocker.patch("orchestration.flows.bl832.nersc.Variable.get", return_value={"defaults": True})
-    controller = NERSCTomographyHPCController(client=mock_sfapi_client, config=mock_config832)
+    controller = NERSCTomographyHPCController(
+        client=mock_sfapi_client,
+        config=mock_config832,
+        login_method=NERSCLoginMethod.SFAPI,
+    )
     mocker.patch.object(controller, "_fetch_seg_timing_from_output", return_value=None)
 
     result = controller.segmentation_sam3(recon_folder_path="folder/recfile")
@@ -290,12 +302,16 @@ def test_segmentation_sam3_success(mocker, mock_sfapi_client, mock_config832):
 
 
 def test_segmentation_sam3_submission_failure(mocker, mock_sfapi_client, mock_config832):
-    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController
+    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
 
     mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
     mocker.patch("orchestration.flows.bl832.nersc.Variable.get", return_value={"defaults": True})
     mock_sfapi_client.compute.return_value.submit_job.side_effect = Exception("GPU queue full")
-    controller = NERSCTomographyHPCController(client=mock_sfapi_client, config=mock_config832)
+    controller = NERSCTomographyHPCController(
+        client=mock_sfapi_client,
+        config=mock_config832,
+        login_method=NERSCLoginMethod.SFAPI,
+    )
 
     result = controller.segmentation_sam3(recon_folder_path="folder/recfile")
 
@@ -306,7 +322,7 @@ def test_segmentation_sam3_submission_failure(mocker, mock_sfapi_client, mock_co
 
 def test_segmentation_sam3_uses_variable_options(mocker, mock_sfapi_client, mock_config832):
     """Custom Prefect variable options should be forwarded into the job script."""
-    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController
+    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
 
     mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
     mocker.patch("orchestration.flows.bl832.nersc.Variable.get", return_value={
@@ -321,7 +337,11 @@ def test_segmentation_sam3_uses_variable_options(mocker, mock_sfapi_client, mock
         "checkpoint": "checkpoint_v7.pt",
     })
 
-    controller = NERSCTomographyHPCController(client=mock_sfapi_client, config=mock_config832)
+    controller = NERSCTomographyHPCController(
+        client=mock_sfapi_client,
+        config=mock_config832,
+        login_method=NERSCLoginMethod.SFAPI,
+    )
     mocker.patch.object(controller, "_fetch_seg_timing_from_output", return_value=None)
 
     captured_scripts = []
@@ -350,12 +370,16 @@ def test_segmentation_sam3_uses_variable_options(mocker, mock_sfapi_client, mock
 # ──────────────────────────────────────────────────────────────────────────────
 
 def test_segmentation_dinov3_success(mocker, mock_sfapi_client, mock_config832):
-    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController
+    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
     from sfapi_client.compute import Machine
 
     mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
     mocker.patch("orchestration.flows.bl832.nersc.Variable.get", return_value={"defaults": True})
-    controller = NERSCTomographyHPCController(client=mock_sfapi_client, config=mock_config832)
+    controller = NERSCTomographyHPCController(
+        client=mock_sfapi_client,
+        config=mock_config832,
+        login_method=NERSCLoginMethod.SFAPI,
+    )
 
     result = controller.segmentation_dinov3(recon_folder_path="folder/recfile")
 
@@ -366,12 +390,16 @@ def test_segmentation_dinov3_success(mocker, mock_sfapi_client, mock_config832):
 
 
 def test_segmentation_dinov3_submission_failure(mocker, mock_sfapi_client, mock_config832):
-    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController
+    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
 
     mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
     mocker.patch("orchestration.flows.bl832.nersc.Variable.get", return_value={"defaults": True})
     mock_sfapi_client.compute.return_value.submit_job.side_effect = Exception("No GPU nodes")
-    controller = NERSCTomographyHPCController(client=mock_sfapi_client, config=mock_config832)
+    controller = NERSCTomographyHPCController(
+        client=mock_sfapi_client,
+        config=mock_config832,
+        login_method=NERSCLoginMethod.SFAPI,
+    )
 
     result = controller.segmentation_dinov3(recon_folder_path="folder/recfile")
     assert result is False
@@ -551,7 +579,7 @@ def test_segmentation_dinov3_output_paths(mocker, mock_sfapi_client, mock_config
         output_dir = ".../scratch/folder/segfile/dino"
     So the script contains "segfile" and "/dino", not a literal "/seg/" segment.
     """
-    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController
+    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
 
     mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
     mocker.patch("orchestration.flows.bl832.nersc.Variable.get", return_value={"defaults": True})
@@ -564,7 +592,11 @@ def test_segmentation_dinov3_output_paths(mocker, mock_sfapi_client, mock_config
         return original_return
 
     mock_sfapi_client.compute.return_value.submit_job.side_effect = capture
-    controller = NERSCTomographyHPCController(client=mock_sfapi_client, config=mock_config832)
+    controller = NERSCTomographyHPCController(
+        client=mock_sfapi_client,
+        config=mock_config832,
+        login_method=NERSCLoginMethod.SFAPI,
+    )
     controller.segmentation_dinov3(recon_folder_path="folder/recfile")
 
     script = captured_scripts[0]
@@ -577,12 +609,16 @@ def test_segmentation_dinov3_output_paths(mocker, mock_sfapi_client, mock_config
 # ──────────────────────────────────────────────────────────────────────────────
 
 def test_combine_segmentations_success(mocker, mock_sfapi_client, mock_config832):
-    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController
+    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
     from sfapi_client.compute import Machine
 
     mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
     mocker.patch("orchestration.flows.bl832.nersc.Variable.get", return_value={"defaults": True})
-    controller = NERSCTomographyHPCController(client=mock_sfapi_client, config=mock_config832)
+    controller = NERSCTomographyHPCController(
+        client=mock_sfapi_client,
+        config=mock_config832,
+        login_method=NERSCLoginMethod.SFAPI,
+    )
 
     result = controller.combine_segmentations(recon_folder_path="folder/recfile")
 
@@ -593,12 +629,16 @@ def test_combine_segmentations_success(mocker, mock_sfapi_client, mock_config832
 
 
 def test_combine_segmentations_submission_failure(mocker, mock_sfapi_client, mock_config832):
-    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController
+    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
 
     mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
     mocker.patch("orchestration.flows.bl832.nersc.Variable.get", return_value={"defaults": True})
     mock_sfapi_client.compute.return_value.submit_job.side_effect = Exception("Cluster down")
-    controller = NERSCTomographyHPCController(client=mock_sfapi_client, config=mock_config832)
+    controller = NERSCTomographyHPCController(
+        client=mock_sfapi_client,
+        config=mock_config832,
+        login_method=NERSCLoginMethod.SFAPI,
+    )
 
     result = controller.combine_segmentations(recon_folder_path="folder/recfile")
 
@@ -607,7 +647,7 @@ def test_combine_segmentations_submission_failure(mocker, mock_sfapi_client, moc
 
 def test_combine_segmentations_script_references_sam3_and_dino(mocker, mock_sfapi_client, mock_config832):
     """The combination job script should reference both model output directories."""
-    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController
+    from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
 
     mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
     mocker.patch("orchestration.flows.bl832.nersc.Variable.get", return_value={"defaults": True})
@@ -620,7 +660,11 @@ def test_combine_segmentations_script_references_sam3_and_dino(mocker, mock_sfap
         return original_return
 
     mock_sfapi_client.compute.return_value.submit_job.side_effect = capture
-    controller = NERSCTomographyHPCController(client=mock_sfapi_client, config=mock_config832)
+    controller = NERSCTomographyHPCController(
+        client=mock_sfapi_client,
+        config=mock_config832,
+        login_method=NERSCLoginMethod.SFAPI,
+    )
     controller.combine_segmentations(recon_folder_path="folder/recfile")
 
     script = captured_scripts[0]
