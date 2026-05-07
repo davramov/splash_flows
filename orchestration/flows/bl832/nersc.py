@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 import datetime
 from dotenv import load_dotenv
-import enum
 import httpx
 import json
 import logging
@@ -179,19 +178,6 @@ def _load_job_options(
     return {**opts, **overrides}
 
 
-class NERSCLoginMethod(enum.Enum):
-    """Selects which NERSC API login method to use when creating a NERSC client.
-
-    Each method corresponds to a different set of credentials and API base URL.
-    """
-
-    SFAPI = "sfapi"
-    """Standard Superfacility API via Iris-registered OAuth2 credentials."""
-
-    IRIAPI = "iriapi"
-    """Integrated Research Infrastructure API via IRI-registered OAuth2 credentials."""
-
-
 class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin):
     """
     Implementation for a NERSC-based tomography HPC controller.
@@ -203,7 +189,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
         self,
         config: Config832,
         client: Client | httpx.Client | None = None,
-        login_method: NERSCLoginMethod = NERSCLoginMethod.SFAPI,
+        login_method: NERSCLoginMethod = NERSCLoginMethod.IRIAPI,
     ) -> None:
         TomographyHPCController.__init__(self, config)
         self.client = client
@@ -211,7 +197,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
 
     @staticmethod
     def create_nersc_client(
-        login_method: NERSCLoginMethod = NERSCLoginMethod.SFAPI,
+        login_method: NERSCLoginMethod = NERSCLoginMethod.IRIAPI,
     ) -> Client | httpx.Client:
         """Create and return a NERSC client for the requested login method.
 
@@ -420,6 +406,8 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
                         sbatch_values["stdout_path"] = line.split("--output=")[-1].strip()
                     elif "--error=" in line:
                         sbatch_values["stderr_path"] = line.split("--error=")[-1].strip()
+                    elif "--reservation=" in line:
+                        sbatch_values["reservation"] = line.split("--reservation=")[-1].strip()
 
             # Strip shebang and SBATCH headers, keep the script body
             script_body = "\n".join(
@@ -440,19 +428,31 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
             else:
                 resources["cpu_cores_per_process"] = 128
 
+            custom_attributes = {"constraint": constraint}
+
+            attributes = {
+                "duration": sbatch_values.get("duration", 1800),
+                "queue_name": sbatch_values.get("queue_name", "regular"),
+                "account": sbatch_values.get("account", "als"),
+                "custom_attributes": custom_attributes,
+            }
+            if "reservation" in sbatch_values:
+                attributes["reservation_id"] = sbatch_values["reservation"]
+
+            job_spec = {
+                "executable": "/bin/bash",
+                "arguments": ["-s"],
+                "pre_launch": script_body,
+                "resources": resources,
+                "attributes": attributes,
+}
+
             job_spec = {
                 "executable": "/bin/bash",
                 "arguments": ["-s"],       # read script from stdin isn't supported, so...
                 "pre_launch": script_body,  # run the body here before the executable
                 "resources": resources,
-                "attributes": {
-                    "duration": sbatch_values.get("duration", 1800),
-                    "queue_name": sbatch_values.get("queue_name", "regular"),
-                    "account": sbatch_values.get("account", "als"),
-                    "custom_attributes": {
-                        "constraint": constraint
-                    },
-                },
+                "attributes": attributes
             }
 
             if "stdout_path" in sbatch_values:
@@ -2724,14 +2724,14 @@ def nersc_segmentation_sam3_integration_test() -> bool:
     return flow_success
 
 
-# if __name__ == "__main__":
+if __name__ == "__main__":
     # nersc_segmentation_dinov3_task(
     #     recon_folder_path='dabramov/recmoon/',
     #     config=Config832(),
     #     project="moon"
     # )
-    # nersc_petiole_segment_flow(
-    #     file_path='dabramov/20260221_143000_petiole28',
-    #     num_nodes=2,
-    #     login_method=NERSCLoginMethod.IRIAPI
-    # )
+    nersc_petiole_segment_flow(
+        file_path='dabramov/20260221_143000_petiole28',
+        num_nodes=4,
+        login_method=NERSCLoginMethod.IRIAPI
+    )
