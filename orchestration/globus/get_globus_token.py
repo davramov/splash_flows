@@ -94,17 +94,39 @@ def load_tokens(token_file: Path) -> dict | None:
         return json.load(f)
 
 
+# def save_tokens(token_file: Path, tokens: dict) -> None:
+#     ensure_private_parent_dir(token_file)
+#     tmp = token_file.with_suffix(".tmp")
+#     with os.fdopen(
+#         os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600),
+#         "w",
+#         encoding="utf-8",
+#     ) as f:
+#         json.dump(tokens, f, indent=2)
+#     os.replace(tmp, token_file)
+#     os.chmod(token_file, stat.S_IRUSR | stat.S_IWUSR)
+
+
 def save_tokens(token_file: Path, tokens: dict) -> None:
     ensure_private_parent_dir(token_file)
-    tmp = token_file.with_suffix(".tmp")
-    with os.fdopen(
-        os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600),
-        "w",
-        encoding="utf-8",
-    ) as f:
-        json.dump(tokens, f, indent=2)
-    os.replace(tmp, token_file)
-    os.chmod(token_file, stat.S_IRUSR | stat.S_IWUSR)
+    # Per-process unique tmp name to avoid races between concurrent writers
+    tmp = token_file.with_suffix(f".tmp.{os.getpid()}.{os.urandom(4).hex()}")
+    try:
+        with os.fdopen(
+            os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600),
+            "w",
+            encoding="utf-8",
+        ) as f:
+            json.dump(tokens, f, indent=2)
+        os.replace(tmp, token_file)
+        os.chmod(token_file, stat.S_IRUSR | stat.S_IWUSR)
+    except Exception:
+        # Clean up tmp if anything between open and replace failed
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
 
 
 def get_refresh_token(stored_tokens: dict) -> str | None:
