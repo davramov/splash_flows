@@ -163,7 +163,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
         self,
         config: Config832,
         client: Client | httpx.Client | None = None,
-        login_method: NERSCLoginMethod = NERSCLoginMethod.SFAPI,
+        login_method: NERSCLoginMethod = NERSCLoginMethod.IRIAPI,
     ) -> None:
         TomographyHPCController.__init__(self, config)
         self.client = client
@@ -2745,14 +2745,14 @@ def nersc_segmentation_sam3_integration_test() -> bool:
     return flow_success
 
 
-# if __name__ == "__main__":
+if __name__ == "__main__":
     # nersc_segmentation_dinov3_task(
     #     recon_folder_path='dabramov/recmoon/',
     #     config=Config832(),
     #     project="moon"
     # )
-    # nersc_petiole_segment_flow(
-    #     file_path='dabramov/20260221_143000_petiole28',
-    #     num_nodes=2,
-    #     login_method=NERSCLoginMethod.IRIAPI
-    # )
+    nersc_petiole_segment_flow(
+        file_path='dabramov/20260221_143000_petiole28',
+        num_nodes=4,
+        login_method=NERSCLoginMethod.IRIAPI
+    )
