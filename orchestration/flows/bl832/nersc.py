@@ -441,18 +441,10 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
 
             job_spec = {
                 "executable": "/bin/bash",
-                "arguments": ["-s"],
-                "pre_launch": script_body,
-                "resources": resources,
-                "attributes": attributes,
-}
-
-            job_spec = {
-                "executable": "/bin/bash",
                 "arguments": ["-s"],       # read script from stdin isn't supported, so...
                 "pre_launch": script_body,  # run the body here before the executable
                 "resources": resources,
-                "attributes": attributes
+                "attributes": attributes,
             }
 
             if "stdout_path" in sbatch_values:
