@@ -196,7 +196,7 @@ hpc_submission_settings832:
     # ── SLURM resource allocation ─────────────────────────────────────────────
     qos: regular
     account: amsc006
-    reservation: "_CAP_SYNAPS_CPU4"
+    reservation: "_CAP_SYNAPS_CPU5"
     num_nodes: 4
     cpus-per-task: 128
     walltime: "0:30:00"
@@ -214,7 +214,7 @@ hpc_submission_settings832:
     qos: regular
     account: amsc006
     constraint: gpu
-    reservation: "_CAP_SYNAPS_GPU4"
+    reservation: "_CAP_SYNAPS_GPU5"
     num_nodes: 32
     ntasks-per-node: 1
     gpus-per-node: 4
@@ -245,7 +245,7 @@ hpc_submission_settings832:
     qos: regular
     account: amsc006
     constraint: gpu
-    reservation: "_CAP_SYNAPS_GPU4"
+    reservation: "_CAP_SYNAPS_GPU5"
     num_nodes: 8
     ntasks-per-node: 1
     nproc_per_node: 4
@@ -265,7 +265,7 @@ hpc_submission_settings832:
     qos: regular
     account: amsc006
     constraint: cpu
-    reservation: "_CAP_SYNAPS_CPU4"
+    reservation: "_CAP_SYNAPS_CPU5"
     num_nodes: 4
     ntasks: 128
     cpus-per-task: 1
