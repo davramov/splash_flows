@@ -429,6 +429,21 @@
   .step.completed .step-detail,
   .step.failed .step-detail,
   .step.crashed .step-detail { fill: rgba(255,255,255,0.85); }
+  /* Timer text. Slightly bolder and bigger than detail lines because it's
+     the most "live" thing on the diagram — the ticking number that says
+     "this is actually working." Tabular-nums keeps digit width stable so the
+     line doesn't twitch as the seconds count up. */
+  .step-timer {
+    font-family: "DM Mono", monospace;
+    font-size: 13px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    fill: var(--slate-dark);
+  }
+  .step.running .step-timer,
+  .step.completed .step-timer,
+  .step.failed .step-timer,
+  .step.crashed .step-timer { fill: #fff; }
   .substep-detail {
     font-family: "DM Mono", monospace;
     font-size: 9px;
@@ -438,6 +453,17 @@
   .substep.completed .substep-detail,
   .substep.failed .substep-detail,
   .substep.crashed .substep-detail { fill: rgba(255,255,255,0.85); }
+  .substep-timer {
+    font-family: "DM Mono", monospace;
+    font-size: 10px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    fill: var(--slate-dark);
+  }
+  .substep.running .substep-timer,
+  .substep.completed .substep-timer,
+  .substep.failed .substep-timer,
+  .substep.crashed .substep-timer { fill: #fff; }
   .step-arrow {
     fill: none;
     stroke: var(--finch-neutral-line);
@@ -678,10 +704,11 @@
         <!-- STEP 1: Reconstruction -->
         <g class="step" id="step-recon">
           <rect class="step-rect" x="20" y="50" width="220" height="110" rx="6" />
-          <text class="step-label"     x="130" y="80"  text-anchor="middle">Reconstruction</text>
-          <text class="step-sublabel"  x="130" y="98"  text-anchor="middle">IRI API</text>
-          <text class="step-detail"    x="130" y="124" text-anchor="middle" id="detail-recon-job"></text>
-          <text class="step-detail"    x="130" y="142" text-anchor="middle" id="detail-recon-msg"></text>
+          <text class="step-label"     x="130" y="76"  text-anchor="middle">Reconstruction</text>
+          <text class="step-sublabel"  x="130" y="92"  text-anchor="middle">IRI API</text>
+          <text class="step-timer"     x="130" y="116" text-anchor="middle" id="detail-recon-timer"></text>
+          <text class="step-detail"    x="130" y="134" text-anchor="middle" id="detail-recon-job"></text>
+          <text class="step-detail"    x="130" y="150" text-anchor="middle" id="detail-recon-msg"></text>
         </g>
 
         <!-- Arrow: recon → segmentation -->
@@ -694,29 +721,32 @@
           <rect class="step-rect" x="320" y="30" width="280" height="160" rx="6" />
           <text class="step-label"    x="460" y="52"  text-anchor="middle">Segmentation</text>
           <text class="step-sublabel" x="460" y="68"  text-anchor="middle">IRI API</text>
+          <text class="step-timer"    x="460" y="84"  text-anchor="middle" id="detail-seg-timer"></text>
 
-          <!-- Substep: SAM3 — taller box with label + job ID slot inside -->
+          <!-- Substep: SAM3 — taller box with label + timer + job ID slot inside -->
           <g class="substep" id="substep-sam3">
-            <rect class="substep-rect"  x="338" y="82" width="120" height="40" rx="3" />
-            <text class="substep-label" x="398" y="98" text-anchor="middle">SAM3</text>
-            <text class="substep-detail" x="398" y="114" text-anchor="middle" id="detail-sam3-job"></text>
+            <rect class="substep-rect"   x="338" y="94" width="120" height="40" rx="3" />
+            <text class="substep-label"  x="398" y="108" text-anchor="middle">SAM3</text>
+            <text class="substep-timer"  x="398" y="122" text-anchor="middle" id="detail-sam3-timer"></text>
+            <text class="substep-detail" x="398" y="132" text-anchor="middle" id="detail-sam3-job"></text>
           </g>
 
           <!-- Substep: DINOv3 -->
           <g class="substep" id="substep-dino">
-            <rect class="substep-rect"  x="462" y="82" width="120" height="40" rx="3" />
-            <text class="substep-label" x="522" y="98" text-anchor="middle">DINOv3</text>
-            <text class="substep-detail" x="522" y="114" text-anchor="middle" id="detail-dino-job"></text>
+            <rect class="substep-rect"   x="462" y="94" width="120" height="40" rx="3" />
+            <text class="substep-label"  x="522" y="108" text-anchor="middle">DINOv3</text>
+            <text class="substep-timer"  x="522" y="122" text-anchor="middle" id="detail-dino-timer"></text>
+            <text class="substep-detail" x="522" y="132" text-anchor="middle" id="detail-dino-job"></text>
           </g>
 
           <!-- AmSC MLflow badge -->
           <g class="mlflow" id="mlflow-badge">
-            <rect class="mlflow-badge"     x="338" y="134" width="100" height="20" rx="3" />
-            <text class="mlflow-badge-text" x="388" y="148" text-anchor="middle">AmSC MLflow</text>
+            <rect class="mlflow-badge"     x="338" y="146" width="100" height="20" rx="3" />
+            <text class="mlflow-badge-text" x="388" y="160" text-anchor="middle">AmSC MLflow</text>
           </g>
 
           <!-- State message slot for whichever segmentation substep is running -->
-          <text class="step-detail" x="460" y="178" text-anchor="middle" id="detail-seg-msg"></text>
+          <text class="step-detail" x="460" y="182" text-anchor="middle" id="detail-seg-msg"></text>
         </g>
 
         <!-- Arrow: segmentation → combine -->
@@ -727,10 +757,11 @@
         <!-- STEP 3: Combine -->
         <g class="step" id="step-combine">
           <rect class="step-rect" x="680" y="50" width="200" height="110" rx="6" />
-          <text class="step-label"     x="780" y="80"  text-anchor="middle">Combine</text>
-          <text class="step-sublabel"  x="780" y="98"  text-anchor="middle">IRI API</text>
-          <text class="step-detail"    x="780" y="124" text-anchor="middle" id="detail-combine-job"></text>
-          <text class="step-detail"    x="780" y="142" text-anchor="middle" id="detail-combine-msg"></text>
+          <text class="step-label"     x="780" y="76"  text-anchor="middle">Combine</text>
+          <text class="step-sublabel"  x="780" y="92"  text-anchor="middle">IRI API</text>
+          <text class="step-timer"     x="780" y="116" text-anchor="middle" id="detail-combine-timer"></text>
+          <text class="step-detail"    x="780" y="134" text-anchor="middle" id="detail-combine-job"></text>
+          <text class="step-detail"    x="780" y="150" text-anchor="middle" id="detail-combine-msg"></text>
         </g>
       </svg>
     </div>
@@ -744,6 +775,7 @@
       </label>
       <button id="btn-pause-poll">Pause</button>
       <button id="btn-clear-logs">Clear</button>
+      <button id="btn-toggle-logs">Collapse</button>
     </div>
     <div class="log-pane" id="log-pane">
       <span class="placeholder">Waiting for logs…</span>
@@ -1233,12 +1265,20 @@ $("btn-submit").addEventListener("click", async () => {
    ------------------------------------------------------------- */
 const STEP_STATE_CLASSES = ["pending", "running", "completed", "failed", "crashed", "cancelled", "scheduled"];
 
-// task name → NERSC job ID, accumulated across polls. Logs eventually scroll
-// off the 200-line poll window, so we cache here once we see the job ID.
-// Reset by resetPipeline() between runs.
-const jobIdCache = {};
+// task name → { jobId, submittedAt } accumulated across polls. Both pieces
+// come from the same "Submitted job ID: N" log line — we capture its
+// timestamp as the per-step timer's start point (option B: "time since
+// submission to NERSC"). Logs land in our poll independently of task_run
+// row updates, so this also dodges a Prefect-side race where a task can be
+// RUNNING in state but still have null start_time in the task_runs table,
+// which was leaving the second-to-start substep's timer blank.
+const submissionCache = {};
 // task_run_id → task name, also cached. Used to attribute log lines to a task.
 const taskIdToName = {};
+// task name → {start: ISO string|null, end: ISO string|null}.
+// Populated from task_runs each poll. We use this for end_time only;
+// start_time comes from submissionCache via the log line.
+const timingCache = {};
 
 function setStepState(elementId, stateType) {
   const el = document.getElementById(elementId);
@@ -1252,11 +1292,75 @@ function setDetailText(elementId, text) {
   if (el) el.textContent = text || "";
 }
 
+// Format an elapsed-seconds count as MM:SS or H:MM:SS. Choices: pad seconds to
+// 2 digits so the display doesn't jitter; only show hours when over an hour
+// so short tasks read cleanly.
+function formatDuration(seconds) {
+  if (seconds < 0 || !isFinite(seconds)) return "";
+  const s = Math.floor(seconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const r = s % 60;
+  const mm = String(m).padStart(2, "0");
+  const rr = String(r).padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${rr}` : `${mm}:${rr}`;
+}
+
+// Render timer text for one task. Start time comes from the "Submitted job ID"
+// log line (i.e. when the NERSC job was actually queued); end time comes from
+// the Prefect task's end_time. Tasks that haven't submitted yet stay blank.
+function updateTimerForTask(elementId, taskName) {
+  const sub = submissionCache[taskName];
+  if (!sub || !sub.submittedAt) { setDetailText(elementId, ""); return; }
+  const start = Date.parse(sub.submittedAt);
+  const timing = timingCache[taskName];
+  const end = (timing && timing.end) ? Date.parse(timing.end) : Date.now();
+  if (Number.isNaN(start)) { setDetailText(elementId, ""); return; }
+  setDetailText(elementId, formatDuration((end - start) / 1000));
+}
+
+// Render the segmentation parent timer. Wall-clock from the earliest substep
+// submission to the latest substep end (or now if either is still running).
+function updateSegmentationTimer() {
+  const sam  = submissionCache["nersc_segmentation_sam3_task"];
+  const dino = submissionCache["nersc_segmentation_dinov3_task"];
+  const starts = [sam && sam.submittedAt, dino && dino.submittedAt]
+    .filter(Boolean).map(Date.parse).filter((n) => !Number.isNaN(n));
+  if (starts.length === 0) { setDetailText("detail-seg-timer", ""); return; }
+  const earliestStart = Math.min(...starts);
+  // For end: if a substep submitted but hasn't ended, treat its end as "now";
+  // if a substep never submitted, ignore it from the max.
+  const samEnd  = (sam  && sam.submittedAt)
+    ? ((timingCache["nersc_segmentation_sam3_task"]    || {}).end
+        ? Date.parse(timingCache["nersc_segmentation_sam3_task"].end)
+        : Date.now())
+    : -Infinity;
+  const dinoEnd = (dino && dino.submittedAt)
+    ? ((timingCache["nersc_segmentation_dinov3_task"]  || {}).end
+        ? Date.parse(timingCache["nersc_segmentation_dinov3_task"].end)
+        : Date.now())
+    : -Infinity;
+  const latestEnd = Math.max(samEnd, dinoEnd);
+  setDetailText("detail-seg-timer", formatDuration((latestEnd - earliestStart) / 1000));
+}
+
+// Refresh every visible timer from the current timingCache. Called every 1s
+// while a run is being monitored AND once per poll (so end_times get applied
+// immediately when a task completes between ticks).
+function renderTimers() {
+  updateTimerForTask("detail-recon-timer",   "nersc_reconstruction_task");
+  updateTimerForTask("detail-sam3-timer",    "nersc_segmentation_sam3_task");
+  updateTimerForTask("detail-dino-timer",    "nersc_segmentation_dinov3_task");
+  updateTimerForTask("detail-combine-timer", "nersc_combine_segmentations_task");
+  updateSegmentationTimer();
+}
+
 // Given a list of log records and the current task-id-to-name map, parse out
-// any "Submitted job ID: N" lines and update the jobIdCache. Idempotent —
-// safe to call on every poll. We attribute by task_run_id so that a single
-// `Submitted job ID:` log line is correctly tied to its submitting task,
-// even if multiple tasks run concurrently.
+// any "Submitted job ID: N" lines and update submissionCache. We capture both
+// the job ID and the log line's timestamp (which is when the job was actually
+// submitted from the worker — more accurate than Date.now() since a log line
+// may arrive in a later poll than when it was emitted).
+// Idempotent: safe to call on every poll; we only write the first sighting.
 function harvestJobIdsFromLogs(logs) {
   const jobIdRe = /Submitted job ID:\s*(\S+)/;
   for (const log of logs) {
@@ -1264,8 +1368,11 @@ function harvestJobIdsFromLogs(logs) {
     if (!m) continue;
     const taskId = log.task_run_id;
     const taskName = taskId && taskIdToName[taskId];
-    if (taskName && !jobIdCache[taskName]) {
-      jobIdCache[taskName] = m[1];
+    if (taskName && !submissionCache[taskName]) {
+      submissionCache[taskName] = {
+        jobId: m[1],
+        submittedAt: log.timestamp || new Date().toISOString(),
+      };
     }
   }
 }
@@ -1303,6 +1410,12 @@ function renderPipeline(taskRuns, logs) {
       byNameMessage[name] = tr.state.message;
     }
     if (tr.id) taskIdToName[tr.id] = name;
+    // Cache end_time only — start_time comes from the "Submitted job ID" log
+    // line, captured by harvestJobIdsFromLogs(). Logs aren't subject to the
+    // brief delay between a task transitioning to RUNNING and Prefect
+    // populating start_time on the task_run row, which was causing the
+    // second-to-start parallel substep's timer to stay blank.
+    timingCache[name] = { end: tr.end_time || null };
   }
 
   // Now that taskIdToName is up to date, parse fresh job IDs from any logs.
@@ -1312,8 +1425,8 @@ function renderPipeline(taskRuns, logs) {
   const reconState = byName["nersc_reconstruction_task"];
   setStepState("step-recon", reconState);
   setStepState("arrow-recon-seg", reconState === "COMPLETED" ? "completed" : reconState);
-  setDetailText("detail-recon-job", jobIdCache["nersc_reconstruction_task"]
-    ? "Job " + jobIdCache["nersc_reconstruction_task"] : "");
+  setDetailText("detail-recon-job", submissionCache["nersc_reconstruction_task"]
+    ? "Job " + submissionCache["nersc_reconstruction_task"].jobId : "");
   setDetailText("detail-recon-msg",
     reconState === "RUNNING" ? (byNameMessage["nersc_reconstruction_task"] || "") : "");
 
@@ -1322,10 +1435,10 @@ function renderPipeline(taskRuns, logs) {
   const dinoState = byName["nersc_segmentation_dinov3_task"];
   setStepState("substep-sam3", samState);
   setStepState("substep-dino", dinoState);
-  setDetailText("detail-sam3-job", jobIdCache["nersc_segmentation_sam3_task"]
-    ? "Job " + jobIdCache["nersc_segmentation_sam3_task"] : "");
-  setDetailText("detail-dino-job", jobIdCache["nersc_segmentation_dinov3_task"]
-    ? "Job " + jobIdCache["nersc_segmentation_dinov3_task"] : "");
+  setDetailText("detail-sam3-job", submissionCache["nersc_segmentation_sam3_task"]
+    ? "Job " + submissionCache["nersc_segmentation_sam3_task"].jobId : "");
+  setDetailText("detail-dino-job", submissionCache["nersc_segmentation_dinov3_task"]
+    ? "Job " + submissionCache["nersc_segmentation_dinov3_task"].jobId : "");
 
   const segState = deriveSegmentationState(samState, dinoState);
   setStepState("step-seg", segState);
@@ -1342,10 +1455,14 @@ function renderPipeline(taskRuns, logs) {
   // Step 3: combine
   const combineState = byName["nersc_combine_segmentations_task"];
   setStepState("step-combine", combineState);
-  setDetailText("detail-combine-job", jobIdCache["nersc_combine_segmentations_task"]
-    ? "Job " + jobIdCache["nersc_combine_segmentations_task"] : "");
+  setDetailText("detail-combine-job", submissionCache["nersc_combine_segmentations_task"]
+    ? "Job " + submissionCache["nersc_combine_segmentations_task"].jobId : "");
   setDetailText("detail-combine-msg",
     combineState === "RUNNING" ? (byNameMessage["nersc_combine_segmentations_task"] || "") : "");
+
+  // Render timers immediately so newly-finalized end_times take effect on the
+  // same poll, not on the next 1s tick.
+  renderTimers();
 }
 
 function resetPipeline() {
@@ -1354,14 +1471,16 @@ function resetPipeline() {
                     "arrow-recon-seg", "arrow-seg-combine"]) {
     setStepState(id, null);
   }
-  for (const id of ["detail-recon-job", "detail-recon-msg",
-                    "detail-sam3-job", "detail-dino-job",
-                    "detail-seg-msg",
-                    "detail-combine-job", "detail-combine-msg"]) {
+  for (const id of ["detail-recon-job", "detail-recon-msg", "detail-recon-timer",
+                    "detail-sam3-job",  "detail-sam3-timer",
+                    "detail-dino-job",  "detail-dino-timer",
+                    "detail-seg-msg",   "detail-seg-timer",
+                    "detail-combine-job", "detail-combine-msg", "detail-combine-timer"]) {
     setDetailText(id, "");
   }
-  for (const k of Object.keys(jobIdCache)) delete jobIdCache[k];
+  for (const k of Object.keys(submissionCache)) delete submissionCache[k];
   for (const k of Object.keys(taskIdToName)) delete taskIdToName[k];
+  for (const k of Object.keys(timingCache)) delete timingCache[k];
   const mlflow = document.getElementById("mlflow-badge");
   if (mlflow) mlflow.classList.remove("active");
 }
@@ -1370,6 +1489,7 @@ function resetPipeline() {
    Monitor: poll flow run state + logs + task runs
    ------------------------------------------------------------- */
 let pollHandle = null;
+let timerHandle = null;    // 1s tick for live elapsed-time rendering
 let pollPaused = false;
 let seenLogIds = new Set();
 let lastState = null;
@@ -1496,9 +1616,15 @@ function startPolling(flowRunId) {
   $("btn-pause-poll").textContent = "Pause";
   pollOnce(flowRunId);
   pollHandle = setInterval(() => pollOnce(flowRunId), POLL_INTERVAL_MS);
+  // Independent 1s tick for the live timers. Cheap — just reads timingCache
+  // and updates text nodes. Stopped together with pollHandle on terminal state.
+  timerHandle = setInterval(renderTimers, 1000);
 }
 function stopPolling() {
-  if (pollHandle) { clearInterval(pollHandle); pollHandle = null; }
+  if (pollHandle)  { clearInterval(pollHandle);  pollHandle  = null; }
+  if (timerHandle) { clearInterval(timerHandle); timerHandle = null; }
+  // Final render so end_times from the last poll are shown stably.
+  renderTimers();
 }
 
 function startMonitoring(flowRunId) {
@@ -1521,6 +1647,19 @@ $("btn-pause-poll").addEventListener("click", () => {
 });
 $("btn-clear-logs").addEventListener("click", () => {
   resetLogPane();
+});
+$("btn-toggle-logs").addEventListener("click", (e) => {
+  const pane = $("log-pane");
+  const collapsed = pane.style.display === "none";
+  if (collapsed) {
+    pane.style.display = "";
+    e.target.textContent = "Collapse";
+    // Re-pin scroll to bottom on expand so newly-arrived logs are in view.
+    pane.scrollTop = pane.scrollHeight;
+  } else {
+    pane.style.display = "none";
+    e.target.textContent = "Expand";
+  }
 });
 $("btn-cancel").addEventListener("click", async () => {
   if (!currentRunId) return;
