@@ -288,7 +288,7 @@ hpc_submission_settings832:
   # ── LEAF SEGMENTATION SETTINGS ───────────────────────────────────────────
   nersc_segmentation_dinov3_leaf:
     # ── SLURM resource allocation ─────────────────────────────────────────────
-    qos: regular
+    qos: realtime
     account: als
     constraint: gpu
     reservation: ""
