@@ -1741,7 +1741,7 @@ def nersc_recon_flow(
         path=Path(config.beegfs_scratch.root_path+zarr_file_path),
         prefix="beamlines/bl832/scratch",
         overwrite=False,
-        tags=["scratch", "8.3.2", folder_name],
+        tags=["8.3.2", folder_name],
     )
 
     logger.info("Scheduling pruning tasks.")
