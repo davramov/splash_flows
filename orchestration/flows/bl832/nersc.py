@@ -38,32 +38,7 @@ logger.setLevel(logging.INFO)
 load_dotenv()
 
 # Applies only to NERSCLoginMethod.IRIAPI
-_IRIAPI_GLOBUS_CLIENT_ID_ENV: str = "GLOBUS_CLIENT_ID"
-_IRI_COMPUTE_RESOURCE: str = "compute"
 _IRIAPI_TOKEN_FILE_ENV: str = "PATH_GLOBUS_TOKEN_FILE"
-
-_API_BASE_URLS: dict[NERSCLoginMethod, str] = {
-    NERSCLoginMethod.SFAPI:  "https://api.nersc.gov/api/v1.2",
-    NERSCLoginMethod.IRIAPI: "https://api.iri.nersc.gov",
-}
-
-# NERSC resource IDs (from status/resources endpoint)
-RESOURCE_IDS = {
-    # Perlmutter compute
-    "perlmutter_compute": "94351904-6dba-4c16-b5cd-fbd280d8615b",
-    "perlmutter_login": "e525a224-61c1-419f-9642-91168c792e39",
-    "perlmutter_realtime": "3776417d-747c-4753-895a-6323c17b9c98",
-    "perlmutter_job_submit": "3cf3c048-855e-4dd8-a189-065a483954bb",
-    # Storage
-    "scratch": "43d8f6c0-f900-48ce-b267-73714103f4ac",
-    "homes": "65b28619-c3b6-4942-8da1-044a3b3a2a9e",
-    "common": "7e07a611-f927-4a39-a44d-b1d6e307accd",
-    "cfs": "59e80c79-4dfd-4c53-9c07-7405685fcd37",
-    "archive": "f4916c65-9001-49c2-b0bf-6fe4276b564c",
-    # Services
-    "globus": "0a207df3-4bec-45b8-9060-13505d269da9",
-    "dtns": "a762cbdc-af7a-4b2b-9463-67f0189dd2ae",
-}
 
 
 @dataclass
@@ -194,9 +169,16 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
         TomographyHPCController.__init__(self, config)
         self.client = client
         self.login_method = login_method
+        if login_method is NERSCLoginMethod.IRIAPI:
+            self.nersc_resources: dict[str, str] = config.nersc_resources["iri"]
+        elif login_method is NERSCLoginMethod.SFAPI:
+            self.nersc_resources = config.nersc_resources["sfapi"]
+        else:
+            raise ValueError(f"Unsupported NERSCLoginMethod: {login_method}")
 
     @staticmethod
     def create_nersc_client(
+        config: Config832,
         login_method: NERSCLoginMethod = NERSCLoginMethod.IRIAPI,
     ) -> Client | httpx.Client:
         """Create and return a NERSC client for the requested login method.
@@ -212,8 +194,9 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
           file path, or rely on the default (``~/.globus/auth_tokens.json``).
 
         Args:
+            config: Config832 instance for accessing config settings needed during client creation.
             login_method: Which NERSC API to authenticate against.
-                Defaults to :attr:`NERSCLoginMethod.SFAPI`.
+                Defaults to :attr:`NERSCLoginMethod.IRIAPI`.
 
         Returns:
             An authenticated :class:`sfapi_client.Client` instance.
@@ -225,32 +208,33 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
             Exception: If the underlying client construction fails.
         """
         logger.info(f"Creating NERSC client using login method: {login_method.value}")
-        api_url = _API_BASE_URLS[login_method]
-        logger.info(f"Targeting API base URL: {api_url}")
 
         if login_method is NERSCLoginMethod.SFAPI:
+            api_base_url = config.nersc_resources["sfapi"]["api_base_url"]
             client = NERSCTomographyHPCController._create_sfapi_client()
 
         elif login_method is NERSCLoginMethod.IRIAPI:
-            client = NERSCTomographyHPCController._create_iriapi_client()
-
+            api_base_url = config.nersc_resources["iri"]["api_base_url"]
+            client = NERSCTomographyHPCController._create_iriapi_client(api_base_url)
         else:
             raise ValueError(f"Unhandled NERSCLoginMethod: {login_method}")
 
         logger.info(
             f"NERSC client created successfully "
-            f"(method={login_method.value}, api_url={api_url})."
+            f"(method={login_method.value}, api_url={api_base_url})."
         )
         return client
 
     @staticmethod
-    def _create_iriapi_client() -> httpx.Client:
+    def _create_iriapi_client(api_base_url: str) -> httpx.Client:
         """Create a NERSC client for the IRI API using a Globus bearer token.
 
         Requires ``GLOBUS_CLIENT_ID`` and ``GLOBUS_CLIENT_SECRET`` in the
         environment. Reuses a cached token if valid; otherwise mints a new one
         via the client credentials grant. No browser or user interaction.
 
+        Parameters:
+            api_base_url: The base URL for the NERSC IRI API
         Returns:
             An authenticated :class:`httpx.Client` targeting the IRI API.
 
@@ -268,7 +252,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
         )
 
         return httpx.Client(
-            base_url=_API_BASE_URLS[NERSCLoginMethod.IRIAPI],
+            base_url=api_base_url,
             headers={"Authorization": f"Bearer {access_token}"},
             timeout=httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0),
         )
@@ -453,7 +437,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
                 job_spec["stderr_path"] = sbatch_values["stderr_path"]
 
             response = self.client.post(
-                f"/api/v1/compute/job/{RESOURCE_IDS['perlmutter_job_submit']}",
+                f"/api/v1/compute/job/{self.nersc_resources['perlmutter_job_submit']}",
                 json=job_spec,
             )
             if not response.is_success:
@@ -486,7 +470,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
         elif self.login_method is NERSCLoginMethod.IRIAPI:
             while True:
                 response = self.client.get(
-                    f"/api/v1/compute/status/{_IRI_COMPUTE_RESOURCE}/{job_id}"  # ← was "perlmutter"
+                    f"/api/v1/compute/status/{self.nersc_resources['compute_resource']}/{job_id}"
                 )
                 response.raise_for_status()
                 state = response.json().get("status", {}).get("state")
@@ -512,7 +496,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
             perlmutter.run(f"mkdir -p {path}")
         elif self.login_method is NERSCLoginMethod.IRIAPI:
             response = self.client.post(
-                f"/api/v1/filesystem/mkdir/{RESOURCE_IDS['perlmutter_login']}",
+                f"/api/v1/filesystem/mkdir/{self.nersc_resources['perlmutter_login']}",
                 json={"path": path, "parents": True},
             )
             response.raise_for_status()
@@ -541,7 +525,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
 
         elif self.login_method is NERSCLoginMethod.IRIAPI:
             response = self.client.get(
-                f"/api/v1/filesystem/view/{RESOURCE_IDS['perlmutter_login']}",
+                f"/api/v1/filesystem/view/{self.nersc_resources['perlmutter_login']}",
                 params={"path": path},
             )
             response.raise_for_status()

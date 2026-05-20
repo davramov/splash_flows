@@ -75,6 +75,27 @@ def mock_config832(mocker):
         ep.root_path = f"/mock/{attr}"
         setattr(mock_config, attr, ep)
 
+    mock_config.nersc_resources = {
+        "iri": {
+            "api_base_url": "https://mock-iri.nersc.gov",
+            "perlmutter_compute": "mock-perlmutter-compute-uuid",
+            "perlmutter_login": "mock-perlmutter-login-uuid",
+            "perlmutter_realtime": "mock-perlmutter-realtime-uuid",
+            "perlmutter_job_submit": "mock-perlmutter-job-submit-uuid",
+            "compute_resource": "compute",
+            "scratch": "mock-scratch-uuid",
+            "homes": "mock-homes-uuid",
+            "common": "mock-common-uuid",
+            "cfs": "mock-cfs-uuid",
+            "archive": "mock-archive-uuid",
+            "globus": "mock-globus-uuid",
+            "dtns": "mock-dtns-uuid",
+        },
+        "sfapi": {
+            "api_base_url": "https://mock-sfapi.nersc.gov",
+        },
+    }
+
     mock_config.nersc_recon_settings = {
         "qos": "realtime",
         "account": "mock_account",
@@ -458,7 +479,6 @@ def test_reconstruct_sfapi_submission_failure(mocker, mock_sfapi_client, mock_co
 def test_reconstruct_iriapi_success(mocker, mock_iriapi_client, mock_config832, monkeypatch):
     """IRIAPI reconstruct POSTs a job and polls for COMPLETED state."""
     from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
-    from orchestration.flows.bl832.nersc import RESOURCE_IDS, _IRI_COMPUTE_RESOURCE
 
     monkeypatch.setenv("NERSC_USERNAME", "alsdev")
     mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
@@ -471,24 +491,27 @@ def test_reconstruct_iriapi_success(mocker, mock_iriapi_client, mock_config832, 
 
     result = controller.reconstruct(file_path="folder/scan.h5")
 
+    # Resource lookups now live on the config, not module-level constants
+    iri = mock_config832.nersc_resources["iri"]
+
     assert result["success"] is True
     assert result["job_id"] == "99999"
     mock_iriapi_client.post.assert_called_once()
     assert (
         mock_iriapi_client.post.call_args.args[0]
-        == f"/api/v1/compute/job/{RESOURCE_IDS['perlmutter_job_submit']}"
+        == f"/api/v1/compute/job/{iri['perlmutter_job_submit']}"
     )
     posted_json = mock_iriapi_client.post.call_args.kwargs["json"]
     assert posted_json["executable"] == "/bin/bash"
-    assert posted_json["arguments"] == ["-s"]              # matches nersc.py
-    assert "pre_launch" in posted_json                     # script body lives here
-    assert "tomo_recon" in posted_json["pre_launch"]       # sanity check it's the right script
+    assert posted_json["arguments"] == ["-s"]
+    assert "pre_launch" in posted_json
+    assert "tomo_recon" in posted_json["pre_launch"]
 
     mock_iriapi_client.get.assert_any_call(
-        f"/api/v1/compute/status/{_IRI_COMPUTE_RESOURCE}/99999"
+        f"/api/v1/compute/status/{iri['compute_resource']}/99999"
     )
     mock_iriapi_client.get.assert_any_call(
-        f"/api/v1/filesystem/view/{RESOURCE_IDS['perlmutter_login']}",
+        f"/api/v1/filesystem/view/{iri['perlmutter_login']}",
         params={"path": mocker.ANY},
     )
 
