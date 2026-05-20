@@ -190,13 +190,34 @@ mlflow:
     registry_uri: https://mlflow.american-science-cloud.org/
     experiment_name: als-bl832-models
 
+nersc_resources:
+  iri:
+    api_base_url: https://api.iri.nersc.gov
+    compute_resource: "compute"
+    # Perlmutter compute
+    perlmutter_compute: "94351904-6dba-4c16-b5cd-fbd280d8615b"
+    perlmutter_login: "e525a224-61c1-419f-9642-91168c792e39"
+    perlmutter_realtime: "3776417d-747c-4753-895a-6323c17b9c98"
+    perlmutter_job_submit: "3cf3c048-855e-4dd8-a189-065a483954bb"
+    # Storage
+    scratch: "43d8f6c0-f900-48ce-b267-73714103f4ac"
+    homes: "65b28619-c3b6-4942-8da1-044a3b3a2a9e"
+    common: "7e07a611-f927-4a39-a44d-b1d6e307accd"
+    cfs: "59e80c79-4dfd-4c53-9c07-7405685fcd37"
+    archive: "f4916c65-9001-49c2-b0bf-6fe4276b564c"
+    # Services
+    globus: "0a207df3-4bec-45b8-9060-13505d269da9"
+    dtns: "a762cbdc-af7a-4b2b-9463-67f0189dd2ae"
+  sfapi:
+    api_base_url: https://api.nersc.gov/api/v1.2
+
 hpc_submission_settings832:
   # ── RECON + MULTIRES SETTINGS ───────────────────────────────────────────────
   nersc_reconstruction:
     # ── SLURM resource allocation ─────────────────────────────────────────────
     qos: regular
     account: amsc006
-    reservation: "_CAP_SYNAPS_LIVEDEMO_CPU1"
+    reservation: "_CAP_SYNAPS_LIVEDEMO_CPU2"
     num_nodes: 16
     cpus-per-task: 128
     walltime: "0:30:00"
@@ -204,7 +225,7 @@ hpc_submission_settings832:
     # ── SLURM resource allocation ─────────────────────────────────────────────
     qos: debug
     account: als
-    reservation: "_CAP_SYNAPS_LIVEDEMO_CPU1"
+    reservation: "_CAP_SYNAPS_LIVEDEMO_CPU2"
     cpus-per-task: 128
     walltime: "0:15:00"
 
@@ -214,7 +235,7 @@ hpc_submission_settings832:
     qos: regular
     account: amsc006
     constraint: gpu
-    reservation: "_CAP_SYNAPS_LIVEDEMO_GPU1"
+    reservation: "_CAP_SYNAPS_LIVEDEMO_GPU2"
     num_nodes: 32
     ntasks-per-node: 1
     gpus-per-node: 4
@@ -245,7 +266,7 @@ hpc_submission_settings832:
     qos: regular
     account: amsc006
     constraint: gpu
-    reservation: "_CAP_SYNAPS_LIVEDEMO_GPU1"
+    reservation: "_CAP_SYNAPS_LIVEDEMO_GPU2"
     num_nodes: 8
     ntasks-per-node: 1
     nproc_per_node: 4
@@ -265,7 +286,7 @@ hpc_submission_settings832:
     qos: regular
     account: amsc006
     constraint: cpu
-    reservation: "_CAP_SYNAPS_LIVEDEMO_CPU1"
+    reservation: "_CAP_SYNAPS_LIVEDEMO_CPU2"
     num_nodes: 4
     ntasks: 128
     cpus-per-task: 1
@@ -284,7 +305,7 @@ hpc_submission_settings832:
     qos: regular
     account: als
     constraint: gpu
-    reservation: "_CAP_TOMO_MOON_GPU"
+    reservation: "_CAP_TOMO_MOON_GPU2"
     num_nodes: 4
     ntasks-per-node: 1
     nproc_per_node: 4
