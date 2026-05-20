@@ -79,7 +79,7 @@ class HPC(Enum):
 def get_controller(
     hpc_type: HPC,
     config: Config832,
-    login_method: "NERSCLoginMethod | None" = None,
+    login_method: NERSCLoginMethod | None = None,
 ) -> TomographyHPCController:
     """
     Factory function that returns an HPC controller instance for the given HPC environment.
@@ -104,6 +104,7 @@ def get_controller(
         resolved_login_method = login_method if isinstance(login_method, NERSCLoginMethod) else NERSCLoginMethod.SFAPI
         return NERSCTomographyHPCController(
             client=NERSCTomographyHPCController.create_nersc_client(
+                config=config,
                 login_method=resolved_login_method
             ),
             config=config,
