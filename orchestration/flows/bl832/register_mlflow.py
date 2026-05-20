@@ -5,7 +5,6 @@ from orchestration.flows.bl832.nersc import _load_job_options
 from orchestration.mlflow import register_checkpoint
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)-7s | %(name)s - %(message)s")
 
 
