@@ -299,11 +299,11 @@ hpc_submission_settings832:
     cpus-per-task: 128
     walltime: "00:59:00"
     # ── Inference parameters ──────────────────────────────────────────────────
-    script_name: "src.inference_dino_v3"
+    script_name: "src.inference_dino_v4"
     project: "leaf"
     batch_size: 4
     # ── Paths ─────────────────────────────────────────────────────────────────
     cfs_path: /global/cfs/cdirs/als/data_mover/8.3.2
     conda_env_path: /global/cfs/cdirs/als/data_mover/8.3.2/envs/dino_demo
     seg_scripts_dir: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/leaf_seg/forge_feb_seg_model_demo/
-    dino_checkpoint_path: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/dino/best_leaf.ckpt
+    dino_checkpoint_path: /global/cfs/cdirs/als/data_mover/8.3.2/tomography_segmentation_scripts/dino/best_leaf_new.ckpt
