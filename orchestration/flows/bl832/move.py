@@ -12,8 +12,8 @@ from orchestration.flows.bl832.config import Config832
 from orchestration.globus.transfer import GlobusEndpoint, start_transfer
 from orchestration.prune_controller import get_prune_controller, PruneMethod
 from orchestration.prometheus_utils import PrometheusMetrics
-from orchestration.tiled import register_file_to_tiled
-from orchestration.transfer_controller import CopyMethod, get_transfer_controller
+# from orchestration.tiled import register_file_to_tiled
+# from orchestration.transfer_controller import CopyMethod, get_transfer_controller
 
 
 API_KEY = os.getenv("API_KEY")
@@ -158,25 +158,27 @@ def process_new_832_file_task(
         except Exception as e:
             logger.error(f"SciCat ingest failed with {e}")
 
-    transfer_controller = get_transfer_controller(
-        transfer_type=CopyMethod.GLOBUS,
-        config=config,
-        prometheus_metrics=None
-    )
+    # Holding off from moving and registering Raw Data to Beegfs Tiled for storage concerns.
 
-    transfer_controller.copy(
-        file_path=relative_path,
-        source=config.data832,
-        destination=config.beegfs_raw
-    )
-    logger.info(f"File successfully transferred from data832 to beegfs {file_path}")
+    # transfer_controller = get_transfer_controller(
+    #     transfer_type=CopyMethod.GLOBUS,
+    #     config=config,
+    #     prometheus_metrics=None
+    # )
 
-    register_file_to_tiled(
-        path=Path(config.beegfs_raw.root_path+relative_path),
-        prefix="beamlines/bl832/raw",
-        overwrite=False,
-        tags=["raw", "bl832"],
-    )
+    # transfer_controller.copy(
+    #     file_path=relative_path,
+    #     source=config.data832,
+    #     destination=config.beegfs_raw
+    # )
+    # logger.info(f"File successfully transferred from data832 to beegfs {file_path}")
+
+    # register_file_to_tiled(
+    #     path=Path(config.beegfs_raw.root_path+relative_path),
+    #     prefix="beamlines/bl832/raw",
+    #     overwrite=False,
+    #     tags=["raw", "8.3.2"],
+    # )
     # TODO: find proposal id in h5, make that a tag
 
     logger.info("Initializing prune controller")
