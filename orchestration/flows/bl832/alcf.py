@@ -14,7 +14,7 @@ from orchestration.flows.bl832.config import Config832
 from orchestration.flows.bl832.job_controller import get_controller, HPC, TomographyHPCController
 from orchestration.transfer_controller import get_transfer_controller, CopyMethod
 from orchestration.prefect import schedule_prefect_flow
-from splash_flows.orchestration.tiled import register_file_to_tiled
+from orchestration.tiled import register_file_to_tiled
 
 
 class ALCFTomographyHPCController(TomographyHPCController):
