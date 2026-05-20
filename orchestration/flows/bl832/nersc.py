@@ -195,7 +195,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
         Args:
             config: Config832 instance for accessing config settings needed during client creation.
             login_method: Which NERSC API to authenticate against.
-                Defaults to :attr:`NERSCLoginMethod.SFAPI`.
+                Defaults to :attr:`NERSCLoginMethod.IRIAPI`.
 
         Returns:
             An authenticated :class:`sfapi_client.Client` instance.
