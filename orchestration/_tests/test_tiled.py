@@ -279,38 +279,40 @@ def test_register_tiff_dir_tags_each_child(mocker: MockFixture, tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_register_missing_entry_after_register_logs_warning(mocker: MockFixture, tmp_path):
-    """If ``node[stem]`` raises ``KeyError`` post-register, no exception leaks and a warning is logged."""
     h5 = tmp_path / "missing.h5"
     h5.touch()
 
-    # Prefix node has *some* entries but not the one we'll look up
     prefix_node = MockNode()
     prefix_node.add_child("other-entry", MockNode())
     client = build_prefix_chain(["beamlines", "bl832", "raw"], prefix_node)
 
     mocker.patch("orchestration.tiled.from_uri", return_value=client)
     mocker.patch("orchestration.tiled.register", mocker.AsyncMock(return_value=None))
-    mock_logger = mocker.patch("orchestration.tiled.get_run_logger")
+    
+    # Patch the specific logger instance returned by get_run_logger
+    # rather than the function itself, to avoid Prefect engine confusion
+    import logging
+    mock_logger = mocker.MagicMock(spec=logging.Logger)
+    mocker.patch("orchestration.tiled.get_run_logger", return_value=mock_logger)
 
-    # Should not raise — the KeyError is caught and logged with available keys
     register_file_to_tiled(
         path=h5,
         prefix="beamlines/bl832/raw",
         tags=["raw"],
     )
 
-    mock_logger.return_value.warning.assert_called_once()
-    warning_msg = mock_logger.return_value.warning.call_args[0][0]
-    assert "missing" in warning_msg   # stem of the file
-    assert "other-entry" in warning_msg  # available keys listed in the message
+    mock_logger.warning.assert_called_once()
+    warning_msg = mock_logger.warning.call_args[0][0]
+    assert "missing" in warning_msg
+    assert "other-entry" in warning_msg
 
 
 def test_register_raises_runtime_error_on_failure(mocker: MockFixture, tmp_path):
-    """If the bridge or Tiled's ``register`` raises, wrap it in ``RuntimeError``."""
     h5 = tmp_path / "scan.h5"
     h5.touch()
 
     mocker.patch("orchestration.tiled.from_uri", return_value=MockNode())
+    mocker.patch("orchestration.tiled.register", return_value=None)  # plain MagicMock, not AsyncMock
     mocker.patch(
         "orchestration.tiled.run_coro_as_sync",
         side_effect=Exception("connection refused"),
