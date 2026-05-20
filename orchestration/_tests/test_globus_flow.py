@@ -204,10 +204,16 @@ def test_832_dispatcher(mocker: MockFixture):
 
     # Mock asyncio.gather to avoid actual async task execution
     async def mock_gather(*args, **kwargs):
+        # Await any coroutines so we don't leak warnings, but don't care about results
+        for arg in args:
+            if asyncio.iscoroutine(arg):
+                try:
+                    await arg
+                except Exception:
+                    pass
         return [None]
 
     mocker.patch('asyncio.gather', new=mock_gather)
-
     # Import decision flow after mocking the necessary components
     from orchestration.flows.bl832.dispatcher import dispatcher
 
@@ -307,6 +313,11 @@ def test_alcf_recon_flow(mocker: MockFixture):
     mock_schedule_pruning = mocker.patch(
         "orchestration.flows.bl832.alcf.schedule_pruning",
         return_value=True
+    )
+
+    mocker.patch(
+        "orchestration.flows.bl832.alcf.schedule_prefect_flow",
+        return_value=None
     )
 
     file_path = "/global/raw/transfer_tests/test.h5"
