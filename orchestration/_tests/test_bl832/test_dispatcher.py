@@ -20,6 +20,15 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 # ---------------------------------------------------------------------------
 
 
+DEFAULT_DECISION_SETTINGS = {
+    "alcf_recon_flow/alcf_recon_flow": True,
+    "nersc_recon_flow/nersc_recon_flow": True,
+    "nersc_petiole_segment_flow/nersc_petiole_segment_flow": True,
+    "nersc_moon_segment_flow/nersc_moon_segment_flow": True,
+    "new_832_file_flow/new_file_832": True,
+}
+
+
 @pytest.fixture(autouse=True, scope="session")
 def bl832_dispatcher_prefect_fixture():
     """Set up Prefect test harness and bl832 variables/secrets for the session."""
@@ -36,13 +45,7 @@ def bl832_dispatcher_prefect_fixture():
         )
         Variable.set(
             name="decision-settings",
-            value={
-                "alcf_recon_flow/alcf_recon_flow": True,
-                "nersc_recon_flow/nersc_recon_flow": True,
-                "nersc_petiole_segment_flow/nersc_petiole_segment_flow": True,
-                "nersc_moon_segment_flow/nersc_moon_segment_flow": True,
-                "new_832_file_flow/new_file_832": True,
-            },
+            value=DEFAULT_DECISION_SETTINGS,
             overwrite=True,
             _sync=True,
         )
@@ -73,6 +76,21 @@ def reset_iec_variable():
     override this within the test body after the fixture runs.
     """
     Variable.set(name="is_export_control", value=False, overwrite=True, _sync=True)
+    yield
+
+
+@pytest.fixture(autouse=True)
+def reset_decision_settings():
+    """Reset decision-settings Prefect Variable before each test.
+
+    Tests that mutate decision-settings won't leak state to subsequent tests.
+    """
+    Variable.set(
+        name="decision-settings",
+        value=DEFAULT_DECISION_SETTINGS,
+        overwrite=True,
+        _sync=True,
+    )
     yield
 
 
@@ -278,3 +296,63 @@ def test_dispatcher_iec_variable_missing_defaults_safe(mocker: MockFixture):
     mock_process.assert_called_once()
     assert mock_process.call_args.kwargs["is_export_control"] is False
     assert _called_deployment_names(mock_run_deployment) == DOWNSTREAM_DEPLOYMENTS
+
+
+def test_dispatcher_respects_decision_settings(mocker: MockFixture):
+    """Only deployments enabled in decision-settings should launch.
+
+    Verifies the per-deployment `if decision_settings.get(...):` branches in dispatcher.
+    """
+    Variable.set(
+        name="decision-settings",
+        value={
+            "alcf_recon_flow/alcf_recon_flow": True,
+            "nersc_recon_flow/nersc_recon_flow": False,
+            "nersc_petiole_segment_flow/nersc_petiole_segment_flow": False,
+            "nersc_moon_segment_flow/nersc_moon_segment_flow": True,
+            "new_832_file_flow/new_file_832": True,
+        },
+        overwrite=True,
+        _sync=True,
+    )
+
+    mock_run_deployment, mock_process = _setup_dispatcher_mocks(mocker)
+
+    from orchestration.flows.bl832.dispatcher import dispatcher
+
+    asyncio.run(
+        dispatcher(
+            file_path="/global/raw/transfer_tests/test.txt",
+            is_export_control=False,
+            config=MockConfig832(),
+        )
+    )
+
+    assert _called_deployment_names(mock_run_deployment) == {
+        "alcf_recon_flow/alcf_recon_flow",
+        "nersc_moon_segment_flow/nersc_moon_segment_flow",
+    }
+    mock_process.assert_called_once()
+
+
+def test_dispatcher_raises_when_process_task_fails(mocker: MockFixture):
+    """If process_new_832_file_task raises, dispatcher wraps it in ValueError.
+
+    Also verifies downstream deployments are NOT launched when the upstream
+    move task fails — confirming the synchronous-first ordering matters.
+    """
+    mock_run_deployment, mock_process = _setup_dispatcher_mocks(mocker)
+    mock_process.side_effect = RuntimeError("disk full")
+
+    from orchestration.flows.bl832.dispatcher import dispatcher
+
+    with pytest.raises(ValueError, match="new_file_832 task Failed"):
+        asyncio.run(
+            dispatcher(
+                file_path="/global/raw/transfer_tests/test.txt",
+                is_export_control=False,
+                config=MockConfig832(),
+            )
+        )
+
+    mock_run_deployment.assert_not_called()
