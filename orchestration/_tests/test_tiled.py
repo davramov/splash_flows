@@ -288,7 +288,7 @@ def test_register_missing_entry_after_register_logs_warning(mocker: MockFixture,
 
     mocker.patch("orchestration.tiled.from_uri", return_value=client)
     mocker.patch("orchestration.tiled.register", mocker.AsyncMock(return_value=None))
-    
+
     # Patch the specific logger instance returned by get_run_logger
     # rather than the function itself, to avoid Prefect engine confusion
     import logging
