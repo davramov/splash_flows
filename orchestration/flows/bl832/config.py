@@ -27,6 +27,8 @@ class Config832(BeamlineConfig):
         self.nersc832_alsdev_recon_scripts = self.endpoints["nersc832_alsdev_recon_scripts"]
         self.alcf832_raw = self.endpoints["alcf832_raw"]
         self.alcf832_scratch = self.endpoints["alcf832_scratch"]
+        self.beegfs_raw = self.endpoints["bl832-beegfs-raw"]
+        self.beegfs_scratch = self.endpoints["bl832-beegfs-scratch"]
         # SciCat
         self.scicat = self.config["scicat"]
         # MLflow

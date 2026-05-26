@@ -18,12 +18,14 @@ from typing import Any, Optional
 from orchestration.flows.bl832.config import Config832
 from orchestration.flows.bl832.job_controller import get_controller, HPC, TomographyHPCController
 from orchestration.mlflow import get_checkpoint_info
-from orchestration.prune_controller import get_prune_controller, PruneMethod
-from orchestration.transfer_controller import globus_transfer_task
 from orchestration.flows.bl832.streaming_mixin import (
     NerscStreamingMixin, SlurmJobBlock, cancellation_hook, monitor_streaming_job, save_block
 )
 from orchestration.prefect import schedule_prefect_flow
+from orchestration.prune_controller import get_prune_controller, PruneMethod
+from orchestration.tiled import register_file_to_tiled
+from orchestration.transfer_controller import globus_transfer_task
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -1695,12 +1697,52 @@ def nersc_recon_flow(
         config=config,
     )
 
+    logger.info("Copy from NERSC /global/cfs/cdirs/als/data_mover/8.3.2/scratch to beegfs")
+
+    # Holding off on copying tiffs to beegfs for now since they are large and we may not need them all.
+    # nersc_to_beegfs_tiff_future = globus_transfer_task.submit(
+    #     file_path=tiff_file_path,
+    #     source=config.nersc832_alsdev_pscratch_scratch,
+    #     destination=config.beegfs_scratch
+    # )
+    # Register the reconstructed TIFFs in tiled
+    # register_file_to_tiled(
+    #     path=Path(config.beegfs_scratch.root_path+tiff_file_path),
+    #     prefix="beamlines/bl832/scratch",
+    #     overwrite=False,
+    #     tags=["scratch", "8.3.2", folder_name],
+    # )
+
+    nersc_to_beegfs_zarr_future = globus_transfer_task.submit(
+        file_path=zarr_file_path,
+        source=config.nersc832_alsdev_pscratch_scratch,
+        destination=config.beegfs_scratch
+    )
+
     # Resolve before pruning (which needs to know what landed where)
     pscratch_to_cfs_tiff_future.result()
     pscratch_to_cfs_zarr_future.result()
     pscratch_to_data832_tiff_future.result()
     pscratch_to_data832_zarr_future.result()
+    # nersc_to_beegfs_tiff_future.result()
+    nersc_to_beegfs_zarr_future.result()
     logger.info("All transfers complete.")
+
+    # Register the reconstructed TIFFs in tiled
+    register_file_to_tiled(
+        path=Path(config.beegfs_scratch.root_path+tiff_file_path),
+        prefix="beamlines/bl832/scratch",
+        overwrite=False,
+        tags=["scratch", "bl832"],
+    )
+
+    # Register the reconstructed ZARRs in tiled
+    register_file_to_tiled(
+        path=Path(config.beegfs_scratch.root_path+zarr_file_path),
+        prefix="beamlines/bl832/scratch",
+        overwrite=False,
+        tags=["8.3.2", folder_name],
+    )
 
     logger.info("Scheduling pruning tasks.")
     schedule_pruning(

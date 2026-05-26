@@ -14,6 +14,7 @@ from orchestration.flows.bl832.config import Config832
 from orchestration.flows.bl832.job_controller import get_controller, HPC, TomographyHPCController
 from orchestration.transfer_controller import get_transfer_controller, CopyMethod
 from orchestration.prefect import schedule_prefect_flow
+from orchestration.tiled import register_file_to_tiled
 
 
 class ALCFTomographyHPCController(TomographyHPCController):
@@ -455,6 +456,23 @@ def alcf_recon_flow(
                     source=config.alcf832_scratch,
                     destination=config.data832_scratch
                 )
+
+                beegfs_zarr_transfer_success = transfer_controller.copy(
+                    file_path=scratch_path_zarr,
+                    source=config.alcf832_scratch,
+                    destination=config.beegfs_scratch
+                )
+
+                if beegfs_zarr_transfer_success:
+                    logger.info("Successfully transferred Zarr to beegfs. Now ingesting to Tiled.")
+                    register_file_to_tiled(
+                        path=Path(config.beegfs_scratch.root_path+scratch_path_zarr),
+                        prefix="beamlines/bl832/scratch",
+                        overwrite=False,
+                        tags=["8.3.2", folder_name],
+                    )
+                else:
+                    logger.error("Failed to transfer Zarr to beegfs, skipping registration to Tiled.")
 
     # Place holder in case we want to transfer to NERSC for long term storage
     nersc_transfer_success = False

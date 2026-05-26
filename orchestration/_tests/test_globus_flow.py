@@ -150,6 +150,8 @@ class MockConfig832():
                                                     MockSecret.for_endpoint("nersc832_alsdev_scratch")),
             "alcf832_raw": MockEndpoint("mock_alcf832_raw_path", MockSecret.for_endpoint("alcf832_raw")),
             "alcf832_scratch": MockEndpoint("mock_alcf832_scratch_path", MockSecret.for_endpoint("alcf832_scratch")),
+            "beegfs_raw": MockEndpoint("mock_beegfs_raw_path", MockSecret.for_endpoint("beegfs_raw")),
+            "beegfs_scratch": MockEndpoint("mock_beegfs_scratch_path", MockSecret.for_endpoint("beegfs_scratch"))
         }
 
         # Mock apps
@@ -169,6 +171,8 @@ class MockConfig832():
         self.data832_raw = self.endpoints["data832_raw"]
         self.data832_scratch = self.endpoints["data832_scratch"]
         self.nersc832_alsdev_scratch = self.endpoints["nersc832_alsdev_scratch"]
+        self.beegfs_raw = self.endpoints["beegfs_raw"]
+        self.beegfs_scratch = self.endpoints["beegfs_scratch"]
         self.scicat = config["scicat"]
 
 
@@ -202,10 +206,16 @@ def test_832_dispatcher(mocker: MockFixture):
 
     # Mock asyncio.gather to avoid actual async task execution
     async def mock_gather(*args, **kwargs):
+        # Await any coroutines so we don't leak warnings, but don't care about results
+        for arg in args:
+            if asyncio.iscoroutine(arg):
+                try:
+                    await arg
+                except Exception:
+                    pass
         return [None]
 
     mocker.patch('asyncio.gather', new=mock_gather)
-
     # Import decision flow after mocking the necessary components
     from orchestration.flows.bl832.dispatcher import dispatcher
 
@@ -250,6 +260,8 @@ def test_alcf_recon_flow(mocker: MockFixture):
             "nersc832_alsdev_recon_scripts": mocker.MagicMock(),
             "alcf832_raw": mocker.MagicMock(),
             "alcf832_scratch": mocker.MagicMock(),
+            "bl832-beegfs-raw": mocker.MagicMock(),
+            "bl832-beegfs-scratch": mocker.MagicMock()
         }
     )
     mocker.patch(
@@ -306,6 +318,17 @@ def test_alcf_recon_flow(mocker: MockFixture):
         return_value=True
     )
 
+    mocker.patch(
+        "orchestration.flows.bl832.alcf.schedule_prefect_flow",
+        return_value=None
+    )
+
+    # Patch ingestion to Tiled
+    mocker.patch(
+        "orchestration.flows.bl832.alcf.register_file_to_tiled",
+        return_value=None
+    )
+
     file_path = "/global/raw/transfer_tests/test.h5"
 
     # ---------- CASE 1: SUCCESS PATH ----------
@@ -315,7 +338,7 @@ def test_alcf_recon_flow(mocker: MockFixture):
 
     result = alcf_recon_flow(file_path=file_path, config=mock_config)
     assert result is True, "Flow should return True if HPC + Tiff->Zarr + transfers all succeed"
-    assert mock_transfer_controller.copy.call_count == 3, "Should do 3 transfers in success path"
+    assert mock_transfer_controller.copy.call_count == 4, "Should do 4 transfers in success path"
     mock_hpc_reconstruct.assert_called_once()
     mock_hpc_multires.assert_called_once()
     mock_schedule_pruning.assert_called_once()

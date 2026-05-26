@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "authlib",
+    "dynaconf",
     "globus-compute-sdk @ git+https://github.com/globus/globus-compute.git@d1731340074be56861ec91d732bdff44f8e2b46e#subdirectory=compute_sdk",
     "globus-sdk>=3.0",
     "griffe>=0.49.0,<2.0.0",
@@ -23,18 +24,20 @@ dependencies = [
     "python-dotenv",
     "pyyaml",
     "scicat_beamline @ git+https://github.com/als-computing/scicat_beamline.git@4828273f5f49ba4eba5442728729e0545b3f5b79",
-    "sfapi_client"
+    "sfapi_client",
+    "tiled[client]",
+    "watchfiles"
+]
+
+[dependency-groups]
+dev = [
+    "black",
+    "flake8",
+    "freezegun",
+    "pytest",
+    "pytest-mock",
 ]
 
 [build-system]
-requires = [
-  "black",
-  "flake8",
-  "freezegun",
-  "pytest",
-  "pytest-mock",
-  "setuptools"
-]
+requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
-
-
