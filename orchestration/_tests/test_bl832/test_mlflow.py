@@ -423,12 +423,12 @@ class TestSegmentationSam3MLflowCheckpoint:
     segmentation_sam3 uses it in the submitted SLURM job script.
     """
 
-    def test_mlflow_checkpoint_appears_in_job_script(self, mocker, mock_sfapi_client, mock_config832):
+    def test_mlflow_checkpoint_appears_in_job_script(self, mocker, mock_config832):
         """
         When _load_job_options returns an MLflow-sourced finetuned_checkpoint_path,
         that path must appear in the SLURM script submitted to Perlmutter.
         """
-        from orchestration.flows.bl832.nersc import NERSCTomographyHPCController
+        from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
 
         mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
 
@@ -441,60 +441,69 @@ class TestSegmentationSam3MLflowCheckpoint:
             return_value=resolved_settings,
         )
 
+        # Capture the script passed to _submit_job — bypasses the SFAPI/IRIAPI
+        # dispatch entirely and avoids the real client.post() / job polling.
         captured = []
-        original_job = mock_sfapi_client.compute.return_value.submit_job.return_value
 
-        def capture_script(script):
+        def capture_script(script, *args, **kwargs):
             captured.append(script)
-            return original_job
+            return "12345"  # fake job id
 
-        mock_sfapi_client.compute.return_value.submit_job.side_effect = capture_script
-
-        controller = NERSCTomographyHPCController(client=mock_sfapi_client, config=mock_config832)
+        # Use a real client mock just so __init__ doesn't fail; we'll never call it.
+        controller = NERSCTomographyHPCController(
+            client=mocker.MagicMock(),
+            config=mock_config832,
+            login_method=NERSCLoginMethod.IRIAPI,
+        )
+        mocker.patch.object(controller, "_submit_job", side_effect=capture_script)
+        mocker.patch.object(controller, "_wait_for_job", return_value=True)
+        mocker.patch.object(controller, "_mkdir_remote", return_value=None)
         mocker.patch.object(controller, "_fetch_seg_timing_from_output", return_value=None)
+        # _get_nersc_username reads NERSC_USERNAME for IRIAPI; stub it
+        mocker.patch.object(controller, "_get_nersc_username", return_value="testuser")
+
         result = controller.segmentation_sam3(recon_folder_path="folder/recfile")
 
-        assert captured, "submit_job was never called"
+        assert captured, "_submit_job was never called"
         assert mlflow_checkpoint in captured[0], (
             "The MLflow checkpoint path must appear in the SLURM job script"
         )
         assert result["success"] is True
 
-    def test_config_default_checkpoint_used_when_mlflow_unavailable(
-        self, mocker, mock_sfapi_client, mock_config832
-    ):
-        """
-        When _load_job_options returns the unmodified config default (MLflow absent),
-        the default checkpoint path should appear in the job script.
-        """
-        from orchestration.flows.bl832.nersc import NERSCTomographyHPCController
+    def test_config_default_checkpoint_used_when_mlflow_unavailable(self, mocker, mock_config832):
+        from orchestration.flows.bl832.nersc import NERSCTomographyHPCController, NERSCLoginMethod
 
         mocker.patch("orchestration.flows.bl832.nersc.time.sleep")
         mocker.patch(
             "orchestration.flows.bl832.nersc.Variable.get",
             return_value={"defaults": True},
         )
-        # MLflow is unreachable; _load_job_options falls back to config
         mocker.patch(
             "orchestration.flows.bl832.nersc.get_checkpoint_info",
             return_value=None,
         )
 
         captured = []
-        original_job = mock_sfapi_client.compute.return_value.submit_job.return_value
 
-        def capture_script(script):
+        def capture_script(script, *args, **kwargs):
             captured.append(script)
-            return original_job
+            return "12345"
 
-        mock_sfapi_client.compute.return_value.submit_job.side_effect = capture_script
-
-        controller = NERSCTomographyHPCController(client=mock_sfapi_client, config=mock_config832)
+        controller = NERSCTomographyHPCController(
+            client=mocker.MagicMock(),
+            config=mock_config832,
+            login_method=NERSCLoginMethod.IRIAPI,
+        )
+        mocker.patch.object(controller, "_submit_job", side_effect=capture_script)
+        mocker.patch.object(controller, "_wait_for_job", return_value=True)
+        mocker.patch.object(controller, "_mkdir_remote", return_value=None)
         mocker.patch.object(controller, "_fetch_seg_timing_from_output", return_value=None)
+        mocker.patch.object(controller, "_get_nersc_username", return_value="testuser")
+
         controller.segmentation_sam3(recon_folder_path="folder/recfile")
 
         config_default = mock_config832.nersc_segment_sam3_settings["finetuned_checkpoint_path"]
-        assert captured, "submit_job was never called"
+        assert captured, "_submit_job was never called"
         assert config_default in captured[0], (
             "Config default checkpoint path must be used when MLflow is unavailable"
         )

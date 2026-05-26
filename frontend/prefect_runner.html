@@ -1,0 +1,1686 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AmSC Tomography Pipeline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  /* ===========================================================
+     ALS Design System palette (mirrors @als-computing/colors).
+     Hex values match the published design system rather than being
+     invented locally. Component styles below reference these tokens
+     only — never raw hex.
+     =========================================================== */
+  :root {
+    /* Primary — Sky */
+    --sky-darkest:        #073048;
+    --sky-dark:           #004C70;
+    --sky-mid:            #095B87;
+    --sky-light:          #0886CA;
+
+    /* Primary — Slate */
+    --slate-darkest:      #464B53;
+    --slate-dark:         #334256;
+    --slate-mid:          #64768D;
+    --slate-light:        #C1D3E3;
+
+    /* Finch / interactive secondary */
+    --finch-border:       #004B71;
+    --finch-border-hover: #52BEE2;
+    --finch-surface:      #F0F5F9;
+    --finch-accent-mid:   #7DA9CD;
+    --finch-accent-light: #9ACFFC;
+    --finch-neutral-dark: #47484A;
+    --finch-neutral-line: #CED7DC;
+    --finch-deep:         #0E3B55;
+
+    /* Semantic state colors (used for task and run state badges) */
+    --state-ok:           #2f7a3d;
+    --state-warn:         #b35c00;
+    --state-err:          #a62828;
+
+    /* Layout tokens */
+    --bg:                 #f7f9fc;
+    --panel:              #ffffff;
+    --ink:                #15202b;
+    --ink-soft:           #4a5b6b;
+    --term-bg:            #0E3B55;
+    --term-fg:            #d8e2ee;
+    --term-dim:           #6b7d92;
+    --shadow:             0 1px 0 rgba(0,0,0,0.04), 0 8px 24px -16px rgba(7,48,72,0.25);
+    --radius:             6px;
+  }
+
+  /* ---------- Base ---------- */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* ---------- Header ---------- */
+  header.als {
+    background: var(--sky-darkest);
+    color: #fff;
+    padding: 14px 32px;
+    border-bottom: 1px solid var(--finch-deep);
+    display: flex;
+    align-items: center;
+    gap: 18px;
+  }
+  header.als .mark {
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+  }
+  header.als .mark .accent { color: var(--finch-border-hover); }
+  header.als .sub {
+    font-family: "DM Mono", monospace;
+    font-size: 11px;
+    color: rgba(255,255,255,0.65);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    border-left: 1px solid rgba(255,255,255,0.18);
+    padding-left: 18px;
+  }
+  header.als .spacer { flex: 1; }
+  header.als .conn-pill {
+    font-family: "DM Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.18);
+  }
+  header.als .conn-pill.live {
+    background: var(--finch-border-hover);
+    color: var(--sky-darkest);
+    border-color: transparent;
+    font-weight: 600;
+  }
+
+  /* ---------- Layout ---------- */
+  main {
+    max-width: 1200px;
+    margin: 24px auto;
+    padding: 0 32px 64px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--finch-neutral-line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .panel-head {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--finch-neutral-line);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--finch-surface);
+  }
+  .panel-head h2 {
+    margin: 0;
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: -0.005em;
+    color: var(--sky-darkest);
+  }
+  .panel-head .step {
+    font-family: "DM Mono", monospace;
+    font-size: 10px;
+    color: var(--sky-dark);
+    background: #fff;
+    border: 1px solid var(--finch-neutral-line);
+    padding: 2px 8px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  .panel-body { padding: 20px; }
+
+  /* ---------- Form controls ---------- */
+  label.field {
+    display: block;
+    margin-bottom: 14px;
+  }
+  label.field > .lbl {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--slate-darkest);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  label.field > .desc {
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin-bottom: 6px;
+  }
+  input[type=text], input[type=password], input[type=number], select, textarea {
+    width: 100%;
+    font-family: "DM Mono", monospace;
+    font-size: 13px;
+    padding: 7px 10px;
+    border: 1px solid var(--finch-neutral-line);
+    border-radius: 4px;
+    background: #fff;
+    color: var(--ink);
+    transition: border-color 120ms, box-shadow 120ms;
+  }
+  input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--finch-border);
+    box-shadow: 0 0 0 3px rgba(0,75,113,0.15);
+  }
+  textarea { resize: vertical; min-height: 90px; }
+  input[type=checkbox] { width: auto; margin-right: 6px; }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .row.three { grid-template-columns: 1fr 2fr 1fr; }
+  @media (max-width: 720px) { .row, .row.three { grid-template-columns: 1fr; } }
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    font-family: "Inter", sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    padding: 8px 16px;
+    border: 1px solid var(--finch-border);
+    background: var(--finch-border);
+    color: #fff;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 120ms, border-color 120ms;
+    letter-spacing: 0.005em;
+  }
+  .btn:hover:not(:disabled) {
+    background: var(--sky-mid);
+    border-color: var(--sky-mid);
+  }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn.primary {
+    background: var(--sky-light);
+    border-color: var(--sky-light);
+  }
+  .btn.primary:hover:not(:disabled) {
+    background: var(--finch-border-hover);
+    border-color: var(--finch-border-hover);
+  }
+  .btn.ghost {
+    background: transparent;
+    color: var(--finch-border);
+    border-color: var(--finch-neutral-line);
+  }
+  .btn.ghost:hover:not(:disabled) {
+    background: var(--finch-surface);
+    border-color: var(--finch-border);
+  }
+  .btn.danger {
+    background: var(--state-err);
+    border-color: var(--state-err);
+  }
+  .btn.danger:hover:not(:disabled) {
+    background: #8a2222;
+    border-color: #8a2222;
+  }
+  .btn-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+
+  /* ---------- Status / messages ---------- */
+  .msg {
+    font-family: "DM Mono", monospace;
+    font-size: 12px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    margin-top: 10px;
+    border-left: 3px solid var(--finch-border);
+    background: var(--finch-surface);
+    color: var(--ink);
+  }
+  .msg.ok  { border-color: var(--state-ok);   background: rgba(47,122,61,0.06); }
+  .msg.err { border-color: var(--state-err);  background: rgba(166,40,40,0.06); }
+
+  /* ---------- State badge (flow run) ---------- */
+  .state-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: "DM Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: var(--slate-mid);
+    color: #fff;
+    font-weight: 500;
+  }
+  .state-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: #fff; }
+  .state-badge.scheduled { background: var(--finch-accent-mid); color: var(--sky-darkest); }
+  .state-badge.pending   { background: var(--slate-light); color: var(--sky-darkest); }
+  .state-badge.running   { background: var(--sky-light); }
+  .state-badge.running .dot { animation: pulse 1.4s ease-in-out infinite; }
+  .state-badge.completed { background: var(--state-ok); }
+  .state-badge.failed, .state-badge.crashed { background: var(--state-err); }
+  .state-badge.cancelled, .state-badge.cancelling { background: var(--slate-mid); }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+  /* ---------- Log pane ---------- */
+  .log-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 7px 16px;
+    background: var(--finch-deep);
+    color: var(--term-fg);
+    font-family: "DM Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    border-top: 1px solid var(--finch-neutral-line);
+  }
+  .log-toolbar .spacer { flex: 1; }
+  .log-toolbar button {
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.25);
+    color: var(--term-fg);
+    font-family: "DM Mono", monospace;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  .log-toolbar button:hover { background: rgba(255,255,255,0.08); }
+  .log-pane {
+    background: var(--term-bg);
+    color: var(--term-fg);
+    font-family: "DM Mono", monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    padding: 12px 16px;
+    height: 360px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .log-pane .log-line { display: block; }
+  .log-pane .log-line .ts   { color: var(--term-dim); margin-right: 10px; }
+  .log-pane .log-line .lvl  {
+    display: inline-block;
+    width: 64px;
+    margin-right: 10px;
+    font-weight: 500;
+  }
+  .log-pane .log-line.lvl-DEBUG    .lvl { color: #6b7d92; }
+  .log-pane .log-line.lvl-INFO     .lvl { color: var(--finch-accent-light); }
+  .log-pane .log-line.lvl-WARNING  .lvl { color: #f3c969; }
+  .log-pane .log-line.lvl-ERROR    .lvl { color: #f48a8a; }
+  .log-pane .log-line.lvl-CRITICAL .lvl { color: #f48a8a; font-weight: 700; }
+  .log-pane .placeholder { color: var(--term-dim); font-style: italic; }
+
+  /* ---------- Misc ---------- */
+  .hidden { display: none !important; }
+  .meta-grid {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 6px 16px;
+    font-family: "DM Mono", monospace;
+    font-size: 12px;
+    margin-bottom: 12px;
+  }
+  .meta-grid dt { color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; }
+  .meta-grid dd { margin: 0; word-break: break-all; }
+  .meta-grid dd a { color: var(--sky-light); }
+
+  details.advanced {
+    margin-top: 14px;
+    border: 1px dashed var(--finch-neutral-line);
+    border-radius: 4px;
+    padding: 8px 12px;
+  }
+  details.advanced > summary {
+    cursor: pointer;
+    font-size: 11px;
+    font-family: "DM Mono", monospace;
+    color: var(--ink-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  footer.als {
+    text-align: center;
+    color: var(--ink-soft);
+    font-size: 11px;
+    font-family: "DM Mono", monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 16px;
+  }
+
+  /* ===========================================================
+     Pipeline diagram
+     =========================================================== */
+  .pipeline-section {
+    border-top: 1px solid var(--finch-neutral-line);
+    background: var(--finch-surface);
+  }
+  .pipeline-section .pipeline-title {
+    padding: 10px 20px 0;
+    font-family: "DM Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--sky-darkest);
+    font-weight: 600;
+  }
+  .pipeline-svg {
+    display: block;
+    width: 100%;
+    height: 220px;
+    padding: 8px 16px 16px;
+  }
+  /* Pipeline-step CSS classes are toggled on <g> elements at runtime.
+     The token names mirror the flow-run state values from Prefect. */
+  .step-rect {
+    fill: #fff;
+    stroke: var(--finch-neutral-line);
+    stroke-width: 1.5;
+    transition: fill 200ms, stroke 200ms;
+  }
+  .step-label {
+    font-family: "Inter", sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    fill: var(--slate-darkest);
+  }
+  .step-sublabel {
+    font-family: "DM Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    fill: var(--ink-soft);
+  }
+  /* Dynamic detail lines populated by renderPipeline(): NERSC job IDs and
+     in-flight state messages. Same style for both because they sit in the
+     same visual slot under the step label. */
+  .step-detail {
+    font-family: "DM Mono", monospace;
+    font-size: 10px;
+    fill: var(--ink-soft);
+  }
+  .step.running .step-detail,
+  .step.completed .step-detail,
+  .step.failed .step-detail,
+  .step.crashed .step-detail { fill: rgba(255,255,255,0.85); }
+  /* Timer text. Slightly bolder and bigger than detail lines because it's
+     the most "live" thing on the diagram — the ticking number that says
+     "this is actually working." Tabular-nums keeps digit width stable so the
+     line doesn't twitch as the seconds count up. */
+  .step-timer {
+    font-family: "DM Mono", monospace;
+    font-size: 13px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    fill: var(--slate-dark);
+  }
+  .step.running .step-timer,
+  .step.completed .step-timer,
+  .step.failed .step-timer,
+  .step.crashed .step-timer { fill: #fff; }
+  .substep-detail {
+    font-family: "DM Mono", monospace;
+    font-size: 9px;
+    fill: var(--ink-soft);
+  }
+  .substep.running .substep-detail,
+  .substep.completed .substep-detail,
+  .substep.failed .substep-detail,
+  .substep.crashed .substep-detail { fill: rgba(255,255,255,0.85); }
+  .substep-timer {
+    font-family: "DM Mono", monospace;
+    font-size: 10px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    fill: var(--slate-dark);
+  }
+  .substep.running .substep-timer,
+  .substep.completed .substep-timer,
+  .substep.failed .substep-timer,
+  .substep.crashed .substep-timer { fill: #fff; }
+  .step-arrow {
+    fill: none;
+    stroke: var(--finch-neutral-line);
+    stroke-width: 2;
+    transition: stroke 200ms;
+  }
+  .step-arrow-head {
+    fill: var(--finch-neutral-line);
+    transition: fill 200ms;
+  }
+
+  /* RUNNING — color pulse between two blues, no opacity fade.
+     The animation modifies fill+stroke between sky-light and finch-border-hover,
+     creating a subtle "breathing" effect that's still readable. */
+  .step.running .step-rect {
+    animation: stepColorPulse 2s ease-in-out infinite;
+  }
+  .step.running .step-label,
+  .step.running .step-sublabel { fill: #fff; }
+  .step.running .step-arrow { stroke: var(--sky-light); }
+  .step.running .step-arrow-head { fill: var(--sky-light); }
+  @keyframes stepColorPulse {
+    0%, 100% {
+      fill:   #0886CA; /* --sky-light */
+      stroke: #0886CA;
+    }
+    50% {
+      fill:   #52BEE2; /* --finch-border-hover */
+      stroke: #52BEE2;
+    }
+  }
+
+  /* COMPLETED — solid green */
+  .step.completed .step-rect {
+    fill: var(--state-ok);
+    stroke: var(--state-ok);
+  }
+  .step.completed .step-label,
+  .step.completed .step-sublabel { fill: #fff; }
+  .step.completed .step-arrow { stroke: var(--state-ok); }
+  .step.completed .step-arrow-head { fill: var(--state-ok); }
+
+  /* FAILED / CRASHED — red */
+  .step.failed .step-rect,
+  .step.crashed .step-rect {
+    fill: var(--state-err);
+    stroke: var(--state-err);
+  }
+  .step.failed .step-label,
+  .step.failed .step-sublabel,
+  .step.crashed .step-label,
+  .step.crashed .step-sublabel { fill: #fff; }
+
+  /* MLflow badge attached to segmentation step */
+  .mlflow-badge {
+    fill: #fff;
+    stroke: var(--finch-border);
+    stroke-width: 1;
+    transition: fill 200ms, stroke 200ms;
+  }
+  .mlflow-badge-text {
+    font-family: "DM Mono", monospace;
+    font-size: 9px;
+    fill: var(--finch-border);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+    transition: fill 200ms;
+  }
+  .mlflow.active .mlflow-badge {
+    fill: var(--finch-border);
+    stroke: var(--finch-border);
+  }
+  .mlflow.active .mlflow-badge-text { fill: #fff; }
+
+  /* Sub-steps (SAM3 / DINOv3) inside the segmentation box */
+  .substep-rect {
+    fill: rgba(255,255,255,0.92);
+    stroke: var(--finch-neutral-line);
+    stroke-width: 1;
+    transition: fill 200ms, stroke 200ms;
+  }
+  .substep-label {
+    font-family: "DM Mono", monospace;
+    font-size: 10px;
+    fill: var(--slate-darkest);
+    font-weight: 500;
+  }
+  .substep.running .substep-rect {
+    animation: substepColorPulse 2s ease-in-out infinite;
+  }
+  @keyframes substepColorPulse {
+    0%, 100% {
+      fill:   #9ACFFC; /* --finch-accent-light */
+      stroke: #9ACFFC;
+    }
+    50% {
+      fill:   #52BEE2; /* --finch-border-hover */
+      stroke: #52BEE2;
+    }
+  }
+  .substep.completed .substep-rect {
+    fill: var(--state-ok);
+    stroke: var(--state-ok);
+  }
+  .substep.completed .substep-label { fill: #fff; }
+  .substep.failed .substep-rect,
+  .substep.crashed .substep-rect {
+    fill: var(--state-err);
+    stroke: var(--state-err);
+  }
+  .substep.failed .substep-label,
+  .substep.crashed .substep-label { fill: #fff; }
+</style>
+</head>
+<body>
+
+<header class="als">
+  <div class="mark">AmSC<span class="accent">.</span> Tomography Pipeline</div>
+  <div class="sub">nersc_petiole_segment_flow</div>
+  <div class="spacer"></div>
+  <div id="conn-pill" class="conn-pill">disconnected</div>
+</header>
+
+<main>
+
+  <!-- ============================================================
+       PANEL 1 — Connection
+       ============================================================ -->
+  <section class="panel" id="panel-connect">
+    <div class="panel-head">
+      <span class="step">Step 1</span>
+      <h2>Connect to Prefect</h2>
+    </div>
+    <div class="panel-body">
+
+      <label class="field">
+        <span class="lbl">Mode</span>
+        <select id="mode">
+          <option value="same-origin">Same-origin (deployed)</option>
+          <option value="self-hosted">Self-hosted (custom URL)</option>
+          <option value="cloud">Prefect Cloud</option>
+        </select>
+        <div class="desc" id="mode-help"></div>
+      </label>
+
+      <div class="row">
+        <label class="field">
+          <span class="lbl">API base URL</span>
+          <input type="text" id="api-base" spellcheck="false" autocomplete="off" />
+        </label>
+        <label class="field" id="token-field">
+          <span class="lbl">Bearer token (Cloud only)</span>
+          <input type="password" id="api-token" spellcheck="false" autocomplete="off" placeholder="pnu_..." />
+        </label>
+      </div>
+
+      <label class="field">
+        <span class="lbl">Deployment ID or name</span>
+        <input type="text" id="deployment-id" spellcheck="false" autocomplete="off" />
+      </label>
+
+      <div class="btn-row">
+        <button class="btn primary" id="btn-connect">Connect</button>
+        <button class="btn ghost" id="btn-clear-config">Clear saved config</button>
+      </div>
+
+      <div id="connect-msg"></div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       PANEL 2 — Submit
+       ============================================================ -->
+  <section class="panel hidden" id="panel-submit">
+    <div class="panel-head">
+      <span class="step">Step 2</span>
+      <h2>Submit a flow run</h2>
+    </div>
+    <div class="panel-body">
+
+      <dl class="meta-grid" id="deployment-meta"></dl>
+
+      <form id="param-form" autocomplete="off"></form>
+
+      <details class="advanced">
+        <summary>Raw JSON override</summary>
+        <p style="font-size:12px;color:var(--ink-soft);margin:8px 0;">
+          Replaces the form above. Must be a JSON object whose keys are the deployment's parameter names.
+        </p>
+        <textarea id="raw-json" placeholder='{"file_path": "dabramov/20260221_143000_petiole28"}'></textarea>
+      </details>
+
+      <label class="field" style="margin-top:14px;">
+        <span class="lbl">Run name (optional)</span>
+        <input type="text" id="run-name" placeholder="e.g. petiole-test-2026-05-08" />
+      </label>
+
+      <div class="btn-row">
+        <button class="btn primary" id="btn-submit">Submit run</button>
+        <button class="btn ghost" id="btn-back-to-connect">← Reconnect</button>
+      </div>
+
+      <div id="submit-msg"></div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       PANEL 3 — Monitor (state + logs + pipeline)
+       ============================================================ -->
+  <section class="panel hidden" id="panel-monitor">
+    <div class="panel-head">
+      <span class="step">Step 3</span>
+      <h2>Monitor flow run</h2>
+      <div class="spacer" style="flex:1"></div>
+      <div id="state-badge" class="state-badge"><span class="dot"></span><span class="txt">—</span></div>
+    </div>
+    <div class="panel-body">
+      <dl class="meta-grid" id="run-meta"></dl>
+      <div class="btn-row">
+        <button class="btn ghost" id="btn-open-ui">Open in Prefect UI ↗</button>
+        <button class="btn danger" id="btn-cancel">Cancel run</button>
+        <button class="btn primary" id="btn-new-run">Submit another run</button>
+      </div>
+    </div>
+
+    <!-- Pipeline diagram. Step states are mutated by renderPipeline(). -->
+    <div class="pipeline-section">
+      <div class="pipeline-title">Pipeline</div>
+      <svg class="pipeline-svg" viewBox="0 0 900 220" xmlns="http://www.w3.org/2000/svg" id="pipeline-svg" preserveAspectRatio="xMidYMid meet">
+        <!-- Arrow marker definitions reused for all arrows. -->
+        <defs>
+          <marker id="arrow-pending" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" class="step-arrow-head" />
+          </marker>
+        </defs>
+
+        <!-- STEP 1: Reconstruction -->
+        <g class="step" id="step-recon">
+          <rect class="step-rect" x="20" y="50" width="220" height="110" rx="6" />
+          <text class="step-label"     x="130" y="76"  text-anchor="middle">Reconstruction</text>
+          <text class="step-sublabel"  x="130" y="92"  text-anchor="middle">IRI API</text>
+          <text class="step-timer"     x="130" y="116" text-anchor="middle" id="detail-recon-timer"></text>
+          <text class="step-detail"    x="130" y="134" text-anchor="middle" id="detail-recon-job"></text>
+          <text class="step-detail"    x="130" y="150" text-anchor="middle" id="detail-recon-msg"></text>
+        </g>
+
+        <!-- Arrow: recon → segmentation -->
+        <g class="step" id="arrow-recon-seg">
+          <line class="step-arrow" x1="240" y1="105" x2="320" y2="105" marker-end="url(#arrow-pending)" />
+        </g>
+
+        <!-- STEP 2: Segmentation (contains SAM3 + DINOv3 substeps and an MLflow badge) -->
+        <g class="step" id="step-seg">
+          <rect class="step-rect" x="320" y="30" width="280" height="160" rx="6" />
+          <text class="step-label"    x="460" y="52"  text-anchor="middle">Segmentation</text>
+          <text class="step-sublabel" x="460" y="68"  text-anchor="middle">IRI API</text>
+          <text class="step-timer"    x="460" y="84"  text-anchor="middle" id="detail-seg-timer"></text>
+
+          <!-- Substep: SAM3 — taller box with label + timer + job ID slot inside -->
+          <g class="substep" id="substep-sam3">
+            <rect class="substep-rect"   x="338" y="94" width="120" height="40" rx="3" />
+            <text class="substep-label"  x="398" y="108" text-anchor="middle">SAM3</text>
+            <text class="substep-timer"  x="398" y="122" text-anchor="middle" id="detail-sam3-timer"></text>
+            <text class="substep-detail" x="398" y="132" text-anchor="middle" id="detail-sam3-job"></text>
+          </g>
+
+          <!-- Substep: DINOv3 -->
+          <g class="substep" id="substep-dino">
+            <rect class="substep-rect"   x="462" y="94" width="120" height="40" rx="3" />
+            <text class="substep-label"  x="522" y="108" text-anchor="middle">DINOv3</text>
+            <text class="substep-timer"  x="522" y="122" text-anchor="middle" id="detail-dino-timer"></text>
+            <text class="substep-detail" x="522" y="132" text-anchor="middle" id="detail-dino-job"></text>
+          </g>
+
+          <!-- AmSC MLflow badge -->
+          <g class="mlflow" id="mlflow-badge">
+            <rect class="mlflow-badge"     x="338" y="146" width="100" height="20" rx="3" />
+            <text class="mlflow-badge-text" x="388" y="160" text-anchor="middle">AmSC MLflow</text>
+          </g>
+
+          <!-- State message slot for whichever segmentation substep is running -->
+          <text class="step-detail" x="460" y="182" text-anchor="middle" id="detail-seg-msg"></text>
+        </g>
+
+        <!-- Arrow: segmentation → combine -->
+        <g class="step" id="arrow-seg-combine">
+          <line class="step-arrow" x1="600" y1="105" x2="680" y2="105" marker-end="url(#arrow-pending)" />
+        </g>
+
+        <!-- STEP 3: Combine -->
+        <g class="step" id="step-combine">
+          <rect class="step-rect" x="680" y="50" width="200" height="110" rx="6" />
+          <text class="step-label"     x="780" y="76"  text-anchor="middle">Combine</text>
+          <text class="step-sublabel"  x="780" y="92"  text-anchor="middle">IRI API</text>
+          <text class="step-timer"     x="780" y="116" text-anchor="middle" id="detail-combine-timer"></text>
+          <text class="step-detail"    x="780" y="134" text-anchor="middle" id="detail-combine-job"></text>
+          <text class="step-detail"    x="780" y="150" text-anchor="middle" id="detail-combine-msg"></text>
+        </g>
+      </svg>
+    </div>
+
+    <div class="log-toolbar">
+      <span>Logs</span>
+      <span id="log-count">0 lines</span>
+      <div class="spacer"></div>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" id="autoscroll" checked /> Autoscroll
+      </label>
+      <button id="btn-pause-poll">Pause</button>
+      <button id="btn-clear-logs">Clear</button>
+      <button id="btn-toggle-logs">Collapse</button>
+    </div>
+    <div class="log-pane" id="log-pane">
+      <span class="placeholder">Waiting for logs…</span>
+    </div>
+  </section>
+
+</main>
+
+<footer class="als">
+  Built for the Photon Science Computing group · Lawrence Berkeley National Laboratory
+</footer>
+
+<script>
+/* =================================================================
+   AmSC Tomography Pipeline runner
+   Single-file vanilla JS app for submitting + monitoring
+   nersc_petiole_segment_flow against a Prefect 3 server.
+   =================================================================
+*/
+
+/* -------------------------------------------------------------
+   Config & persistence
+   ------------------------------------------------------------- */
+const LS_KEY = "als-prefect-runner-v2";  // bump from v1 to clear stale config
+// Default identifier for the deployment input. Can be either a UUID (stable
+// across one Prefect server's lifetime) or "flow_name/deployment_name" (stable
+// across server recreations and across local/prod). Names are preferred.
+const DEFAULT_DEPLOYMENT_ID = "nersc_petiole_segment_flow/nersc_petiole_segment_flow";
+const FETCH_TIMEOUT_MS = 30_000;
+const POLL_INTERVAL_MS = 3_000;
+
+const TERMINAL_STATES = new Set(["COMPLETED", "FAILED", "CRASHED", "CANCELLED"]);
+
+const MODE_PRESETS = {
+  "same-origin": {
+    apiBase: window.location.origin + "/api",
+    needsToken: false,
+    help: "Use this when the page is served from flow-prd. Auth comes from your existing browser session.",
+  },
+  "self-hosted": {
+    // iri.als.lbl.gov should resolve to 127.0.0.1 via /etc/hosts during local dev.
+    apiBase: "http://iri.als.lbl.gov:4200/api",
+    needsToken: false,
+    help: "Point at any Prefect server. iri.als.lbl.gov should resolve to 127.0.0.1 via your /etc/hosts during local dev. Run `python -m http.server` from this file's directory; opening as file:// will fail CORS.",
+  },
+  "cloud": {
+    apiBase: "https://api.prefect.cloud/api/accounts/<ACCOUNT_ID>/workspaces/<WORKSPACE_ID>",
+    needsToken: true,
+    help: "Replace ACCOUNT_ID and WORKSPACE_ID in the URL. Token is stored in localStorage on this device only and sent as Authorization: Bearer.",
+  },
+};
+
+function loadConfig() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw);
+  } catch (e) {
+    console.warn("Could not parse saved config:", e);
+    return {};
+  }
+}
+function saveConfig(patch) {
+  const merged = { ...loadConfig(), ...patch };
+  try { localStorage.setItem(LS_KEY, JSON.stringify(merged)); }
+  catch (e) { console.warn("Could not save config:", e); }
+}
+function clearConfig() {
+  try { localStorage.removeItem(LS_KEY); } catch (e) { /* ignore */ }
+}
+
+/* -------------------------------------------------------------
+   API client
+   ------------------------------------------------------------- */
+const api = {
+  base: null,
+  token: null,
+
+  configure(base, token) {
+    this.base = (base || "").replace(/\/+$/, "");
+    this.token = token || null;
+  },
+
+  async _fetch(path, opts = {}) {
+    const url = this.base + path;
+    const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
+    if (this.token) headers["Authorization"] = "Bearer " + this.token;
+
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
+    let res;
+    try {
+      res = await fetch(url, { ...opts, headers, signal: ctl.signal });
+    } catch (e) {
+      clearTimeout(timer);
+      if (e.name === "AbortError") throw new Error("Request timed out after " + (FETCH_TIMEOUT_MS / 1000) + "s");
+      throw new Error("Network error: " + e.message);
+    }
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      let detail = "";
+      try { detail = (await res.text()).slice(0, 300); } catch (e) { /* ignore */ }
+      throw new Error("HTTP " + res.status + " on " + path + (detail ? " — " + detail : ""));
+    }
+    if (res.status === 204) return null;
+    return res.json();
+  },
+
+  health()                       { return this._fetch("/health"); },
+  getDeployment(id)              { return this._fetch("/deployments/" + id); },
+
+  // Look up a deployment by "flow_name/deployment_name" path. Stable across
+  // local/prod and across server recreations, unlike the UUID.
+  getDeploymentByName(name) {
+    return this._fetch("/deployments/name/" + name);
+  },
+  getFlow(id)                    { return this._fetch("/flows/" + id); },
+  getFlowRun(id)                 { return this._fetch("/flow_runs/" + id); },
+
+  createFlowRun(deploymentId, body) {
+    return this._fetch("/deployments/" + deploymentId + "/create_flow_run", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  setFlowRunState(flowRunId, stateType, stateName) {
+    return this._fetch("/flow_runs/" + flowRunId + "/set_state", {
+      method: "POST",
+      body: JSON.stringify({
+        state: { type: stateType, name: stateName, message: "Cancelled from AmSC Tomography Pipeline runner" },
+        force: false,
+      }),
+    });
+  },
+
+  filterLogs(flowRunId) {
+    const body = {
+      logs: { flow_run_id: { any_: [flowRunId] } },
+      sort: "TIMESTAMP_ASC",
+      limit: 200,
+      offset: 0,
+    };
+    return this._fetch("/logs/filter", { method: "POST", body: JSON.stringify(body) });
+  },
+
+  // Pull every task run for a flow. Used by the pipeline diagram to map task
+  // names → step states.
+  filterTaskRuns(flowRunId) {
+    const body = {
+      task_runs: { flow_run_id: { any_: [flowRunId] } },
+      sort: "EXPECTED_START_TIME_ASC",
+      limit: 200,
+      offset: 0,
+    };
+    return this._fetch("/task_runs/filter", { method: "POST", body: JSON.stringify(body) });
+  },
+};
+
+/* -------------------------------------------------------------
+   DOM helpers
+   ------------------------------------------------------------- */
+const $ = (id) => document.getElementById(id);
+function showPanel(id) {
+  ["panel-connect", "panel-submit", "panel-monitor"].forEach((p) => {
+    $(p).classList.toggle("hidden", p !== id);
+  });
+}
+function setMsg(elId, text, kind) {
+  const el = $(elId);
+  el.innerHTML = "";
+  if (!text) return;
+  const div = document.createElement("div");
+  div.className = "msg " + (kind || "");
+  div.textContent = text;
+  el.appendChild(div);
+}
+function setConnPill(text, live) {
+  const p = $("conn-pill");
+  p.textContent = text;
+  p.classList.toggle("live", !!live);
+}
+
+/* -------------------------------------------------------------
+   Mode + connection panel wiring
+   ------------------------------------------------------------- */
+function applyModePreset(mode, { keepUrl = false } = {}) {
+  const preset = MODE_PRESETS[mode];
+  $("mode-help").textContent = preset.help;
+  $("token-field").style.display = preset.needsToken ? "" : "none";
+  if (!keepUrl) $("api-base").value = preset.apiBase;
+}
+
+function initFromSavedConfig() {
+  const cfg = loadConfig();
+  const mode = cfg.mode || "self-hosted";
+  $("mode").value = mode;
+  applyModePreset(mode, { keepUrl: !!cfg.apiBase });
+  if (cfg.apiBase) $("api-base").value = cfg.apiBase;
+  if (cfg.token) $("api-token").value = cfg.token;
+  $("deployment-id").value = cfg.deploymentId || DEFAULT_DEPLOYMENT_ID;
+}
+
+$("mode").addEventListener("change", (e) => applyModePreset(e.target.value));
+
+$("btn-clear-config").addEventListener("click", () => {
+  clearConfig();
+  $("api-token").value = "";
+  initFromSavedConfig();
+  setMsg("connect-msg", "Saved config cleared.", "ok");
+});
+
+/* -------------------------------------------------------------
+   Connect: validate, fetch deployment, render submit panel
+   ------------------------------------------------------------- */
+let currentDeployment = null;
+let currentFlow = null;
+
+$("btn-connect").addEventListener("click", async () => {
+  const mode = $("mode").value;
+  const apiBase = $("api-base").value.trim();
+  const token = $("api-token").value.trim();
+  const deploymentId = $("deployment-id").value.trim();
+
+  if (!apiBase)        return setMsg("connect-msg", "API base URL is required.", "err");
+  if (!deploymentId)   return setMsg("connect-msg", "Deployment ID is required.", "err");
+  if (MODE_PRESETS[mode].needsToken && !token) {
+    return setMsg("connect-msg", "Prefect Cloud requires a Bearer token.", "err");
+  }
+
+  api.configure(apiBase, token);
+  saveConfig({ mode, apiBase, token, deploymentId });
+  setMsg("connect-msg", "Connecting…");
+  setConnPill("connecting…", false);
+
+  try {
+    // Accept either a UUID or a "flow_name/deployment_name" string. UUIDs are
+    // 36 chars with dashes at fixed positions; anything else gets the by-name
+    // lookup. Names are stable across local/prod; UUIDs aren't.
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(deploymentId);
+    currentDeployment = isUuid
+      ? await api.getDeployment(deploymentId)
+      : await api.getDeploymentByName(deploymentId);
+    if (currentDeployment.flow_id) {
+      try { currentFlow = await api.getFlow(currentDeployment.flow_id); }
+      catch (e) { currentFlow = null; }
+    }
+    setConnPill("connected", true);
+    setMsg("connect-msg", "Connected to deployment '" + currentDeployment.name + "'.", "ok");
+    renderSubmitPanel();
+    showPanel("panel-submit");
+  } catch (e) {
+    setConnPill("disconnected", false);
+    setMsg("connect-msg", "Connect failed: " + e.message, "err");
+  }
+});
+
+/* -------------------------------------------------------------
+   Submit panel
+   ------------------------------------------------------------- */
+function renderSubmitPanel() {
+  const meta = $("deployment-meta");
+  meta.innerHTML = "";
+  const rows = [
+    ["Deployment", currentDeployment.name],
+    ["Flow", currentFlow ? currentFlow.name : currentDeployment.flow_id],
+    ["Work pool", currentDeployment.work_pool_name || "—"],
+    ["Work queue", currentDeployment.work_queue_name || "—"],
+    ["Deployment ID", currentDeployment.id],
+  ];
+  for (const [k, v] of rows) {
+    const dt = document.createElement("dt"); dt.textContent = k;
+    const dd = document.createElement("dd"); dd.textContent = v;
+    meta.append(dt, dd);
+  }
+
+  const form = $("param-form");
+  form.innerHTML = "";
+  const schema = currentDeployment.parameter_openapi_schema || {};
+  const props = schema.properties || {};
+  const required = new Set(schema.required || []);
+  const savedParams = (loadConfig().lastParams) || {};
+
+  if (Object.keys(props).length === 0) {
+    const note = document.createElement("p");
+    note.style.fontSize = "13px";
+    note.style.color = "var(--ink-soft)";
+    note.textContent = "This deployment has no declared parameters. Use the Raw JSON override below if you need to send any.";
+    form.appendChild(note);
+  }
+
+  for (const [name, propRaw] of Object.entries(props)) {
+    const prop = resolveSchemaRef(propRaw, schema);
+    const lbl = document.createElement("label");
+    lbl.className = "field";
+    lbl.dataset.paramName = name;
+
+    const lblText = document.createElement("span");
+    lblText.className = "lbl";
+    lblText.textContent = name + (required.has(name) ? " *" : "");
+    lbl.appendChild(lblText);
+
+    if (prop.description || prop.title) {
+      const d = document.createElement("span");
+      d.className = "desc";
+      d.textContent = prop.description || prop.title;
+      lbl.appendChild(d);
+    }
+
+    const initial = name in savedParams ? savedParams[name]
+                  : ("default" in prop ? prop.default : undefined);
+    const input = buildInputForProp(name, prop, initial);
+    lbl.appendChild(input);
+    form.appendChild(lbl);
+  }
+}
+
+function resolveSchemaRef(node, root) {
+  if (!node || typeof node !== "object") return node;
+  if (Array.isArray(node.allOf) && node.allOf.length === 1) {
+    return resolveSchemaRef(node.allOf[0], root);
+  }
+  if (node.$ref && typeof node.$ref === "string") {
+    const parts = node.$ref.replace(/^#\//, "").split("/");
+    let cur = root;
+    for (const p of parts) {
+      if (cur && typeof cur === "object" && p in cur) cur = cur[p];
+      else return node;
+    }
+    return resolveSchemaRef(cur, root);
+  }
+  return node;
+}
+
+function buildInputForProp(name, prop, initial) {
+  const type = Array.isArray(prop.type) ? prop.type.find((t) => t !== "null") : prop.type;
+
+  if (Array.isArray(prop.enum)) {
+    const sel = document.createElement("select");
+    sel.name = name;
+    sel.dataset.kind = "enum";
+    for (const v of prop.enum) {
+      const opt = document.createElement("option");
+      opt.value = String(v);
+      opt.textContent = String(v);
+      if (initial !== undefined && String(initial) === String(v)) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    return sel;
+  }
+
+  if (type === "boolean") {
+    const wrap = document.createElement("span");
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.name = name;
+    cb.dataset.kind = "boolean";
+    cb.checked = !!initial;
+    wrap.appendChild(cb);
+    const label = document.createElement("span");
+    label.style.fontSize = "13px";
+    label.style.fontFamily = "DM Mono, monospace";
+    label.textContent = "true / false";
+    wrap.appendChild(label);
+    return wrap;
+  }
+
+  if (type === "integer" || type === "number") {
+    const i = document.createElement("input");
+    i.type = "number";
+    i.name = name;
+    i.dataset.kind = type;
+    if (type === "integer") i.step = "1";
+    if (initial !== undefined && initial !== null) i.value = String(initial);
+    return i;
+  }
+
+  if (type === "string") {
+    const i = document.createElement("input");
+    i.type = "text";
+    i.name = name;
+    i.dataset.kind = "string";
+    if (initial !== undefined && initial !== null) i.value = String(initial);
+    return i;
+  }
+
+  const ta = document.createElement("textarea");
+  ta.name = name;
+  ta.dataset.kind = "json";
+  ta.rows = 3;
+  ta.placeholder = "JSON";
+  if (initial !== undefined) ta.value = JSON.stringify(initial, null, 2);
+  return ta;
+}
+
+function collectFormParams() {
+  const raw = $("raw-json").value.trim();
+  if (raw) {
+    let parsed;
+    try { parsed = JSON.parse(raw); }
+    catch (e) { throw new Error("Raw JSON override is not valid JSON: " + e.message); }
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Raw JSON override must be a JSON object.");
+    }
+    return parsed;
+  }
+
+  const out = {};
+  const form = $("param-form");
+  for (const el of form.querySelectorAll("[name]")) {
+    const name = el.name;
+    const kind = el.dataset.kind;
+    if (kind === "boolean") {
+      out[name] = el.checked;
+    } else if (kind === "integer") {
+      if (el.value === "") continue;
+      const n = parseInt(el.value, 10);
+      if (Number.isNaN(n)) throw new Error("Parameter '" + name + "' must be an integer.");
+      out[name] = n;
+    } else if (kind === "number") {
+      if (el.value === "") continue;
+      const n = parseFloat(el.value);
+      if (Number.isNaN(n)) throw new Error("Parameter '" + name + "' must be a number.");
+      out[name] = n;
+    } else if (kind === "json") {
+      const v = el.value.trim();
+      if (v === "") continue;
+      try { out[name] = JSON.parse(v); }
+      catch (e) { throw new Error("Parameter '" + name + "' must be valid JSON: " + e.message); }
+    } else {
+      if (el.value === "") continue;
+      out[name] = el.value;
+    }
+  }
+  return out;
+}
+
+/* -------------------------------------------------------------
+   Submit handler
+   ------------------------------------------------------------- */
+let currentRunId = null;
+
+$("btn-back-to-connect").addEventListener("click", () => {
+  showPanel("panel-connect");
+});
+
+$("btn-submit").addEventListener("click", async () => {
+  let params;
+  try { params = collectFormParams(); }
+  catch (e) { return setMsg("submit-msg", e.message, "err"); }
+
+  const runName = $("run-name").value.trim();
+  const body = { parameters: params };
+  if (runName) body.name = runName;
+
+  setMsg("submit-msg", "Submitting…");
+  $("btn-submit").disabled = true;
+  try {
+    const run = await api.createFlowRun(currentDeployment.id, body);
+    currentRunId = run.id;
+    saveConfig({ lastRunId: currentRunId, lastParams: params });
+    setMsg("submit-msg", "Submitted. Flow run id: " + currentRunId, "ok");
+    startMonitoring(currentRunId);
+  } catch (e) {
+    setMsg("submit-msg", "Submit failed: " + e.message, "err");
+  } finally {
+    $("btn-submit").disabled = false;
+  }
+});
+
+/* -------------------------------------------------------------
+   Pipeline diagram — task-run → step state mapping
+
+   Maps Prefect task names to diagram element IDs. The petiole flow
+   has these task calls (see splash_flows
+   orchestration/flows/bl832/nersc.py:nersc_petiole_segment_flow):
+
+     STEP 1: nersc_reconstruction_task
+     STEP 2: nersc_segmentation_sam3_task   (parallel)
+             nersc_segmentation_dinov3_task (parallel)
+     STEP 3: nersc_combine_segmentations_task
+
+   The "segmentation" diagram box state is derived from the two
+   parallel substeps — running if either is running, completed
+   only if both completed, failed if either failed.
+   ------------------------------------------------------------- */
+const STEP_STATE_CLASSES = ["pending", "running", "completed", "failed", "crashed", "cancelled", "scheduled"];
+
+// task name → { jobId, submittedAt } accumulated across polls. Both pieces
+// come from the same "Submitted job ID: N" log line — we capture its
+// timestamp as the per-step timer's start point (option B: "time since
+// submission to NERSC"). Logs land in our poll independently of task_run
+// row updates, so this also dodges a Prefect-side race where a task can be
+// RUNNING in state but still have null start_time in the task_runs table,
+// which was leaving the second-to-start substep's timer blank.
+const submissionCache = {};
+// task_run_id → task name, also cached. Used to attribute log lines to a task.
+const taskIdToName = {};
+// task name → {start: ISO string|null, end: ISO string|null}.
+// Populated from task_runs each poll. We use this for end_time only;
+// start_time comes from submissionCache via the log line.
+const timingCache = {};
+
+function setStepState(elementId, stateType) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  for (const cls of STEP_STATE_CLASSES) el.classList.remove(cls);
+  if (stateType) el.classList.add(stateType.toLowerCase());
+}
+
+function setDetailText(elementId, text) {
+  const el = document.getElementById(elementId);
+  if (el) el.textContent = text || "";
+}
+
+// Format an elapsed-seconds count as MM:SS or H:MM:SS. Choices: pad seconds to
+// 2 digits so the display doesn't jitter; only show hours when over an hour
+// so short tasks read cleanly.
+function formatDuration(seconds) {
+  if (seconds < 0 || !isFinite(seconds)) return "";
+  const s = Math.floor(seconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const r = s % 60;
+  const mm = String(m).padStart(2, "0");
+  const rr = String(r).padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${rr}` : `${mm}:${rr}`;
+}
+
+// Render timer text for one task. Start time comes from the "Submitted job ID"
+// log line (i.e. when the NERSC job was actually queued); end time comes from
+// the Prefect task's end_time. Tasks that haven't submitted yet stay blank.
+function updateTimerForTask(elementId, taskName) {
+  const sub = submissionCache[taskName];
+  if (!sub || !sub.submittedAt) { setDetailText(elementId, ""); return; }
+  const start = Date.parse(sub.submittedAt);
+  const timing = timingCache[taskName];
+  const end = (timing && timing.end) ? Date.parse(timing.end) : Date.now();
+  if (Number.isNaN(start)) { setDetailText(elementId, ""); return; }
+  setDetailText(elementId, formatDuration((end - start) / 1000));
+}
+
+// Render the segmentation parent timer. Wall-clock from the earliest substep
+// submission to the latest substep end (or now if either is still running).
+function updateSegmentationTimer() {
+  const sam  = submissionCache["nersc_segmentation_sam3_task"];
+  const dino = submissionCache["nersc_segmentation_dinov3_task"];
+  const starts = [sam && sam.submittedAt, dino && dino.submittedAt]
+    .filter(Boolean).map(Date.parse).filter((n) => !Number.isNaN(n));
+  if (starts.length === 0) { setDetailText("detail-seg-timer", ""); return; }
+  const earliestStart = Math.min(...starts);
+  // For end: if a substep submitted but hasn't ended, treat its end as "now";
+  // if a substep never submitted, ignore it from the max.
+  const samEnd  = (sam  && sam.submittedAt)
+    ? ((timingCache["nersc_segmentation_sam3_task"]    || {}).end
+        ? Date.parse(timingCache["nersc_segmentation_sam3_task"].end)
+        : Date.now())
+    : -Infinity;
+  const dinoEnd = (dino && dino.submittedAt)
+    ? ((timingCache["nersc_segmentation_dinov3_task"]  || {}).end
+        ? Date.parse(timingCache["nersc_segmentation_dinov3_task"].end)
+        : Date.now())
+    : -Infinity;
+  const latestEnd = Math.max(samEnd, dinoEnd);
+  setDetailText("detail-seg-timer", formatDuration((latestEnd - earliestStart) / 1000));
+}
+
+// Refresh every visible timer from the current timingCache. Called every 1s
+// while a run is being monitored AND once per poll (so end_times get applied
+// immediately when a task completes between ticks).
+function renderTimers() {
+  updateTimerForTask("detail-recon-timer",   "nersc_reconstruction_task");
+  updateTimerForTask("detail-sam3-timer",    "nersc_segmentation_sam3_task");
+  updateTimerForTask("detail-dino-timer",    "nersc_segmentation_dinov3_task");
+  updateTimerForTask("detail-combine-timer", "nersc_combine_segmentations_task");
+  updateSegmentationTimer();
+}
+
+// Given a list of log records and the current task-id-to-name map, parse out
+// any "Submitted job ID: N" lines and update submissionCache. We capture both
+// the job ID and the log line's timestamp (which is when the job was actually
+// submitted from the worker — more accurate than Date.now() since a log line
+// may arrive in a later poll than when it was emitted).
+// Idempotent: safe to call on every poll; we only write the first sighting.
+function harvestJobIdsFromLogs(logs) {
+  const jobIdRe = /Submitted job ID:\s*(\S+)/;
+  for (const log of logs) {
+    const m = log.message && log.message.match(jobIdRe);
+    if (!m) continue;
+    const taskId = log.task_run_id;
+    const taskName = taskId && taskIdToName[taskId];
+    if (taskName && !submissionCache[taskName]) {
+      submissionCache[taskName] = {
+        jobId: m[1],
+        submittedAt: log.timestamp || new Date().toISOString(),
+      };
+    }
+  }
+}
+
+// Combine two substep states into the parent step's state.
+function deriveSegmentationState(samState, dinoState) {
+  const states = [samState, dinoState].filter(Boolean);
+  if (states.length === 0) return null;
+  if (states.includes("RUNNING")) return "RUNNING";
+  if (states.every((s) => s === "COMPLETED")) return "COMPLETED";
+  if ((states.includes("FAILED") || states.includes("CRASHED")) && !states.includes("RUNNING")) {
+    return "FAILED";
+  }
+  if (states.includes("PENDING") || states.includes("SCHEDULED")) return "PENDING";
+  return null;
+}
+
+// Render the pipeline diagram from a list of task runs returned by
+// /api/task_runs/filter and a list of recent logs. Toggles CSS classes on SVG
+// <g> elements; populates detail text inside them with NERSC job IDs +
+// in-flight state messages.
+function renderPipeline(taskRuns, logs) {
+  // Index task states + state messages by stripped task name. Prefect task
+  // run names have a trailing dynamic suffix like "nersc_reconstruction_task-adf"
+  // — strip it so our lookup keys match the registered task names.
+  const byName = {};
+  const byNameMessage = {};
+  for (const tr of taskRuns) {
+    const rawName = tr.name || (tr.task_key || "").split(".").pop();
+    if (!rawName) continue;
+    const name = rawName.replace(/-[0-9a-f]{3,}$/i, "");
+    const stateType = tr.state ? tr.state.type : null;
+    byName[name] = stateType;
+    if (stateType === "RUNNING" && tr.state && tr.state.message) {
+      byNameMessage[name] = tr.state.message;
+    }
+    if (tr.id) taskIdToName[tr.id] = name;
+    // Cache end_time only — start_time comes from the "Submitted job ID" log
+    // line, captured by harvestJobIdsFromLogs(). Logs aren't subject to the
+    // brief delay between a task transitioning to RUNNING and Prefect
+    // populating start_time on the task_run row, which was causing the
+    // second-to-start parallel substep's timer to stay blank.
+    timingCache[name] = { end: tr.end_time || null };
+  }
+
+  // Now that taskIdToName is up to date, parse fresh job IDs from any logs.
+  if (logs && logs.length) harvestJobIdsFromLogs(logs);
+
+  // Step 1: reconstruction
+  const reconState = byName["nersc_reconstruction_task"];
+  setStepState("step-recon", reconState);
+  setStepState("arrow-recon-seg", reconState === "COMPLETED" ? "completed" : reconState);
+  setDetailText("detail-recon-job", submissionCache["nersc_reconstruction_task"]
+    ? "Job " + submissionCache["nersc_reconstruction_task"].jobId : "");
+  setDetailText("detail-recon-msg",
+    reconState === "RUNNING" ? (byNameMessage["nersc_reconstruction_task"] || "") : "");
+
+  // Step 2: segmentation (two parallel substeps + derived parent + MLflow badge)
+  const samState  = byName["nersc_segmentation_sam3_task"];
+  const dinoState = byName["nersc_segmentation_dinov3_task"];
+  setStepState("substep-sam3", samState);
+  setStepState("substep-dino", dinoState);
+  setDetailText("detail-sam3-job", submissionCache["nersc_segmentation_sam3_task"]
+    ? "Job " + submissionCache["nersc_segmentation_sam3_task"].jobId : "");
+  setDetailText("detail-dino-job", submissionCache["nersc_segmentation_dinov3_task"]
+    ? "Job " + submissionCache["nersc_segmentation_dinov3_task"].jobId : "");
+
+  const segState = deriveSegmentationState(samState, dinoState);
+  setStepState("step-seg", segState);
+  setStepState("arrow-seg-combine", segState === "COMPLETED" ? "completed" : segState);
+  // Show whichever substep's state message is most informative right now.
+  const segMsg = byNameMessage["nersc_segmentation_sam3_task"] || byNameMessage["nersc_segmentation_dinov3_task"] || "";
+  setDetailText("detail-seg-msg", segState === "RUNNING" ? segMsg : "");
+
+  // MLflow badge is "active" while either segmentation substep is running.
+  const mlflowActive = (samState === "RUNNING" || dinoState === "RUNNING");
+  const mlflowEl = document.getElementById("mlflow-badge");
+  if (mlflowEl) mlflowEl.classList.toggle("active", mlflowActive);
+
+  // Step 3: combine
+  const combineState = byName["nersc_combine_segmentations_task"];
+  setStepState("step-combine", combineState);
+  setDetailText("detail-combine-job", submissionCache["nersc_combine_segmentations_task"]
+    ? "Job " + submissionCache["nersc_combine_segmentations_task"].jobId : "");
+  setDetailText("detail-combine-msg",
+    combineState === "RUNNING" ? (byNameMessage["nersc_combine_segmentations_task"] || "") : "");
+
+  // Render timers immediately so newly-finalized end_times take effect on the
+  // same poll, not on the next 1s tick.
+  renderTimers();
+}
+
+function resetPipeline() {
+  for (const id of ["step-recon", "step-seg", "step-combine",
+                    "substep-sam3", "substep-dino",
+                    "arrow-recon-seg", "arrow-seg-combine"]) {
+    setStepState(id, null);
+  }
+  for (const id of ["detail-recon-job", "detail-recon-msg", "detail-recon-timer",
+                    "detail-sam3-job",  "detail-sam3-timer",
+                    "detail-dino-job",  "detail-dino-timer",
+                    "detail-seg-msg",   "detail-seg-timer",
+                    "detail-combine-job", "detail-combine-msg", "detail-combine-timer"]) {
+    setDetailText(id, "");
+  }
+  for (const k of Object.keys(submissionCache)) delete submissionCache[k];
+  for (const k of Object.keys(taskIdToName)) delete taskIdToName[k];
+  for (const k of Object.keys(timingCache)) delete timingCache[k];
+  const mlflow = document.getElementById("mlflow-badge");
+  if (mlflow) mlflow.classList.remove("active");
+}
+
+/* -------------------------------------------------------------
+   Monitor: poll flow run state + logs + task runs
+   ------------------------------------------------------------- */
+let pollHandle = null;
+let timerHandle = null;    // 1s tick for live elapsed-time rendering
+let pollPaused = false;
+let seenLogIds = new Set();
+let lastState = null;
+
+function setStateBadge(stateType) {
+  const b = $("state-badge");
+  b.className = "state-badge " + (stateType ? stateType.toLowerCase() : "");
+  b.querySelector(".txt").textContent = stateType || "—";
+}
+
+function buildPrefectUiUrl(flowRunId) {
+  const base = $("api-base").value.trim();
+  if ($("mode").value === "same-origin") {
+    return window.location.origin + "/runs/flow-run/" + flowRunId;
+  }
+  if (base.includes("api.prefect.cloud")) {
+    const m = base.match(/accounts\/([^/]+)\/workspaces\/([^/]+)/);
+    if (m) return "https://app.prefect.cloud/account/" + m[1] + "/workspace/" + m[2] + "/runs/flow-run/" + flowRunId;
+  }
+  const uiBase = base.replace(/\/api\/?$/, "");
+  return uiBase + "/runs/flow-run/" + flowRunId;
+}
+
+function renderRunMeta(run) {
+  const meta = $("run-meta");
+  meta.innerHTML = "";
+  const rows = [
+    ["Run name", run.name || "—"],
+    ["Flow run ID", run.id],
+    ["Created", run.created || "—"],
+    ["Started", run.start_time || "—"],
+    ["Ended", run.end_time || "—"],
+    ["State message", run.state ? (run.state.message || "—") : "—"],
+  ];
+  for (const [k, v] of rows) {
+    const dt = document.createElement("dt"); dt.textContent = k;
+    const dd = document.createElement("dd"); dd.textContent = v;
+    meta.append(dt, dd);
+  }
+}
+
+function appendLogs(logs) {
+  const pane = $("log-pane");
+  const placeholder = pane.querySelector(".placeholder");
+  if (placeholder && logs.length > 0) placeholder.remove();
+
+  const autoscroll = $("autoscroll").checked;
+  const nearBottom = pane.scrollTop + pane.clientHeight >= pane.scrollHeight - 40;
+
+  for (const log of logs) {
+    if (seenLogIds.has(log.id)) continue;
+    seenLogIds.add(log.id);
+    const lvlName = (log.level >= 50) ? "CRITICAL"
+                  : (log.level >= 40) ? "ERROR"
+                  : (log.level >= 30) ? "WARNING"
+                  : (log.level >= 20) ? "INFO"
+                  : "DEBUG";
+    const line = document.createElement("span");
+    line.className = "log-line lvl-" + lvlName;
+    line.innerHTML =
+      '<span class="ts"></span><span class="lvl"></span><span class="msg-txt"></span>';
+    line.querySelector(".ts").textContent = (log.timestamp || "").replace("T", " ").replace(/\.\d+.*$/, "");
+    line.querySelector(".lvl").textContent = lvlName;
+    line.querySelector(".msg-txt").textContent = log.message || "";
+    pane.appendChild(line);
+  }
+  $("log-count").textContent = seenLogIds.size + " line" + (seenLogIds.size === 1 ? "" : "s");
+  if (autoscroll && nearBottom) pane.scrollTop = pane.scrollHeight;
+}
+
+function resetLogPane() {
+  seenLogIds = new Set();
+  const pane = $("log-pane");
+  pane.innerHTML = '<span class="placeholder">Waiting for logs…</span>';
+  $("log-count").textContent = "0 lines";
+}
+
+async function pollOnce(flowRunId) {
+  if (pollPaused) return;
+
+  // Three concurrent polls: flow run state, task run states (for the
+  // diagram), and logs. They're independent — failure of one shouldn't
+  // block the others.
+  const [run, taskRunsResp, logsResp] = await Promise.allSettled([
+    api.getFlowRun(flowRunId),
+    api.filterTaskRuns(flowRunId),
+    api.filterLogs(flowRunId),
+  ]);
+
+  if (run.status === "fulfilled") {
+    renderRunMeta(run.value);
+    const stateType = run.value.state ? run.value.state.type : null;
+    if (stateType !== lastState) {
+      lastState = stateType;
+      setStateBadge(stateType);
+    }
+    if (stateType && TERMINAL_STATES.has(stateType)) {
+      stopPolling();
+      $("btn-cancel").disabled = true;
+    }
+  } else {
+    console.warn("flow_run poll error:", run.reason);
+  }
+
+  // Render the diagram with the latest task runs + logs. Logs are needed so
+  // we can parse "Submitted job ID: ..." and pin job IDs to their tasks.
+  const logsForRender = (logsResp.status === "fulfilled") ? (logsResp.value || []) : [];
+  if (taskRunsResp.status === "fulfilled") {
+    renderPipeline(taskRunsResp.value || [], logsForRender);
+  } else {
+    console.warn("task_runs poll error:", taskRunsResp.reason);
+  }
+
+  if (logsResp.status === "fulfilled") {
+    appendLogs(logsResp.value || []);
+  } else {
+    console.warn("logs poll error:", logsResp.reason);
+  }
+}
+
+function startPolling(flowRunId) {
+  stopPolling();
+  pollPaused = false;
+  $("btn-pause-poll").textContent = "Pause";
+  pollOnce(flowRunId);
+  pollHandle = setInterval(() => pollOnce(flowRunId), POLL_INTERVAL_MS);
+  // Independent 1s tick for the live timers. Cheap — just reads timingCache
+  // and updates text nodes. Stopped together with pollHandle on terminal state.
+  timerHandle = setInterval(renderTimers, 1000);
+}
+function stopPolling() {
+  if (pollHandle)  { clearInterval(pollHandle);  pollHandle  = null; }
+  if (timerHandle) { clearInterval(timerHandle); timerHandle = null; }
+  // Final render so end_times from the last poll are shown stably.
+  renderTimers();
+}
+
+function startMonitoring(flowRunId) {
+  resetLogPane();
+  resetPipeline();
+  lastState = null;
+  setStateBadge("PENDING");
+  $("btn-cancel").disabled = false;
+  $("btn-open-ui").onclick = () => window.open(buildPrefectUiUrl(flowRunId), "_blank", "noopener");
+  showPanel("panel-monitor");
+  startPolling(flowRunId);
+}
+
+/* -------------------------------------------------------------
+   Monitor button handlers
+   ------------------------------------------------------------- */
+$("btn-pause-poll").addEventListener("click", () => {
+  pollPaused = !pollPaused;
+  $("btn-pause-poll").textContent = pollPaused ? "Resume" : "Pause";
+});
+$("btn-clear-logs").addEventListener("click", () => {
+  resetLogPane();
+});
+$("btn-toggle-logs").addEventListener("click", (e) => {
+  const pane = $("log-pane");
+  const collapsed = pane.style.display === "none";
+  if (collapsed) {
+    pane.style.display = "";
+    e.target.textContent = "Collapse";
+    // Re-pin scroll to bottom on expand so newly-arrived logs are in view.
+    pane.scrollTop = pane.scrollHeight;
+  } else {
+    pane.style.display = "none";
+    e.target.textContent = "Expand";
+  }
+});
+$("btn-cancel").addEventListener("click", async () => {
+  if (!currentRunId) return;
+  if (!confirm("Cancel this flow run?")) return;
+  try {
+    await api.setFlowRunState(currentRunId, "CANCELLING", "Cancelling");
+    setStateBadge("CANCELLING");
+  } catch (e) {
+    alert("Cancel failed: " + e.message);
+  }
+});
+$("btn-new-run").addEventListener("click", () => {
+  stopPolling();
+  showPanel("panel-submit");
+});
+
+/* -------------------------------------------------------------
+   Init
+   ------------------------------------------------------------- */
+initFromSavedConfig();
+</script>
+
+</body>
+</html>
