@@ -152,6 +152,7 @@ async def dispatcher(
         )
     else:
         logger.info("is_export_control Prefect Variable is False — proceeding with normal flow")
+    # OR-merge so either the caller param OR the Prefect Variable can force IEC mode.
     inputs.is_export_control = inputs.is_export_control or iec_override
 
     # Run new_file_832 first (synchronously)
