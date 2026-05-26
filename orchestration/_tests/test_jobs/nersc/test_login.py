@@ -11,8 +11,6 @@ create_nersc_client's dispatch logic, which is the only thing this module adds.
 That choice is intentional.
 """
 
-import pytest
-
 from orchestration.jobs.nersc.login import NERSCLoginMethod, create_nersc_client
 
 
@@ -48,38 +46,38 @@ class TestNERSCLoginMethod:
 # ── create_nersc_client dispatch ──────────────────────────────────────────────
 
 class TestCreateNerscClient:
-    def test_sfapi_dispatches_to_sfapi_builder(self, mocker, fake_config):
+    def test_sfapi_dispatches_to_sfapi_builder(self, mocker, mock_config):
         mock_client = mocker.MagicMock()
         builder = mocker.patch(
             "orchestration.jobs.nersc.login._create_sfapi_client",
             return_value=mock_client,
         )
-        result = create_nersc_client(fake_config, NERSCLoginMethod.SFAPI)
+        result = create_nersc_client(mock_config, NERSCLoginMethod.SFAPI)
         builder.assert_called_once_with()
         assert result is mock_client
 
-    def test_iriapi_dispatches_to_iriapi_builder(self, mocker, fake_config):
+    def test_iriapi_dispatches_to_iriapi_builder(self, mocker, mock_config):
         mock_client = mocker.MagicMock()
         builder = mocker.patch(
             "orchestration.jobs.nersc.login._create_iriapi_client",
             return_value=mock_client,
         )
-        result = create_nersc_client(fake_config, NERSCLoginMethod.IRIAPI)
-        builder.assert_called_once_with(fake_config.nersc_resources["iri"]["api_base_url"])
+        result = create_nersc_client(mock_config, NERSCLoginMethod.IRIAPI)
+        builder.assert_called_once_with(mock_config.nersc_resources["iri"]["api_base_url"])
         assert result is mock_client
 
-    def test_sfapi_passes_api_base_url_from_config(self, mocker, fake_config):
+    def test_sfapi_passes_api_base_url_from_config(self, mocker, mock_config):
         mocker.patch("orchestration.jobs.nersc.login._create_sfapi_client")
         # No assertion on URL for SFAPI (the builder doesn't take a URL arg),
         # but create_nersc_client must read the sfapi sub-dict without raising.
-        create_nersc_client(fake_config, NERSCLoginMethod.SFAPI)
+        create_nersc_client(mock_config, NERSCLoginMethod.SFAPI)
 
-    def test_iriapi_passes_correct_api_base_url(self, mocker, fake_config):
+    def test_iriapi_passes_correct_api_base_url(self, mocker, mock_config):
         builder = mocker.patch("orchestration.jobs.nersc.login._create_iriapi_client")
-        create_nersc_client(fake_config, NERSCLoginMethod.IRIAPI)
+        create_nersc_client(mock_config, NERSCLoginMethod.IRIAPI)
         builder.assert_called_once_with("https://mock-iri.nersc.gov")
 
-    def test_default_login_method_is_iriapi(self, mocker, fake_config):
+    def test_default_login_method_is_iriapi(self, mocker, mock_config):
         builder = mocker.patch("orchestration.jobs.nersc.login._create_iriapi_client")
-        create_nersc_client(fake_config)
+        create_nersc_client(mock_config)
         builder.assert_called_once()

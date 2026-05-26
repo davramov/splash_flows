@@ -27,26 +27,26 @@ from orchestration.jobs.alcf.controller import (
 # ── Init ──────────────────────────────────────────────────────────────────────
 
 class TestALCFJobControllerInit:
-    def test_reads_allocation_root_from_variable(self, mocker, fake_config, mock_alcf_prefect):
-        ctrl = ALCFJobController(fake_config)
+    def test_reads_allocation_root_from_variable(self, mocker, mock_config, mock_alcf_prefect):
+        ctrl = ALCFJobController(mock_config)
         assert ctrl.allocation_root == "/eagle/IRIProd/ALS"
 
-    def test_reads_endpoint_id_from_secret(self, mocker, fake_config, mock_alcf_prefect):
-        ctrl = ALCFJobController(fake_config)
+    def test_reads_endpoint_id_from_secret(self, mocker, mock_config, mock_alcf_prefect):
+        ctrl = ALCFJobController(mock_config)
         assert ctrl.endpoint_id == "mock-endpoint-uuid"
 
-    def test_variable_get_called_with_correct_name(self, mocker, fake_config, mock_alcf_prefect):
-        ALCFJobController(fake_config)
+    def test_variable_get_called_with_correct_name(self, mocker, mock_config, mock_alcf_prefect):
+        ALCFJobController(mock_config)
         mock_alcf_prefect.variable.assert_called_once_with(
             _ALLOCATION_ROOT_VARIABLE, _sync=True
         )
 
-    def test_secret_load_called_with_correct_name(self, mocker, fake_config, mock_alcf_prefect):
-        ALCFJobController(fake_config)
+    def test_secret_load_called_with_correct_name(self, mocker, mock_config, mock_alcf_prefect):
+        ALCFJobController(mock_config)
         # mock_alcf_prefect.secret IS the mock for Secret.load (not Secret itself)
         mock_alcf_prefect.secret.assert_called_once_with(_GLOBUS_COMPUTE_ENDPOINT_SECRET)
 
-    def test_raises_when_allocation_root_missing(self, mocker, fake_config):
+    def test_raises_when_allocation_root_missing(self, mocker, mock_config):
         # allocation_data.get(...) returns None → ValueError
         mocker.patch(
             "orchestration.jobs.alcf.controller.Variable.get",
@@ -54,17 +54,17 @@ class TestALCFJobControllerInit:
         )
         mocker.patch("orchestration.jobs.alcf.controller.Secret.load")
         with pytest.raises(ValueError, match="Allocation root not found"):
-            ALCFJobController(fake_config)
+            ALCFJobController(mock_config)
 
-    def test_stores_config(self, mocker, fake_config, mock_alcf_prefect):
-        ctrl = ALCFJobController(fake_config)
-        assert ctrl.config is fake_config
+    def test_stores_config(self, mocker, mock_config, mock_alcf_prefect):
+        ctrl = ALCFJobController(mock_config)
+        assert ctrl.config is mock_config
 
 
 # ── submit ────────────────────────────────────────────────────────────────────
 
 class TestSubmit:
-    def test_constructs_client_and_submits_via_executor(self, mocker, fake_config, mock_alcf_prefect):
+    def test_constructs_client_and_submits_via_executor(self, mocker, mock_config, mock_alcf_prefect):
         mock_client_cls = mocker.patch("orchestration.jobs.alcf.controller.Client")
         mock_executor_cls = mocker.patch("orchestration.jobs.alcf.controller.Executor")
 
@@ -77,7 +77,7 @@ class TestSubmit:
         def noop():
             pass
 
-        ctrl = ALCFJobController(fake_config)
+        ctrl = ALCFJobController(mock_config)
         result = ctrl.submit(noop)
 
         mock_client_cls.assert_called_once()
@@ -88,7 +88,7 @@ class TestSubmit:
         mock_executor_instance.submit.assert_called_once()
         assert result is mock_future
 
-    def test_returns_future(self, mocker, fake_config, mock_alcf_prefect):
+    def test_returns_future(self, mocker, mock_config, mock_alcf_prefect):
         mocker.patch("orchestration.jobs.alcf.controller.Client")
         mock_executor_cls = mocker.patch("orchestration.jobs.alcf.controller.Executor")
 
@@ -101,7 +101,7 @@ class TestSubmit:
         def identity(x):
             return x
 
-        ctrl = ALCFJobController(fake_config)
+        ctrl = ALCFJobController(mock_config)
         future = ctrl.submit(identity, 42, key="val")
 
         mock_executor_instance.submit.assert_called_once_with(identity, 42, key="val")
@@ -166,12 +166,12 @@ class TestWaitForFuture:
         call_count = [0]
         start = 1000.0
 
-        def fake_time():
+        def mock_time():
             val = start + call_count[0] * 700
             call_count[0] += 1
             return val
 
-        mocker.patch("orchestration.jobs.alcf.controller.time.time", side_effect=fake_time)
+        mocker.patch("orchestration.jobs.alcf.controller.time.time", side_effect=mock_time)
 
         future = mocker.MagicMock()
         future.done.return_value = False  # never completes

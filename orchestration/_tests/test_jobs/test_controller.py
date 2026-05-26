@@ -51,20 +51,20 @@ class TestJobControllerABC:
     for TypeError on instantiation.
     """
 
-    def test_instantiates_with_valid_config(self, fake_config):
-        controller = JobController(fake_config)
+    def test_instantiates_with_valid_config(self, mock_config):
+        controller = JobController(mock_config)
         assert controller is not None
 
-    def test_stores_config(self, fake_config):
-        controller = JobController(fake_config)
-        assert controller.config is fake_config
+    def test_stores_config(self, mock_config):
+        controller = JobController(mock_config)
+        assert controller.config is mock_config
 
-    def test_subclass_inherits_config(self, fake_config):
-        class DummyJobController(JobController):
+    def test_subclass_inherits_config(self, mock_config):
+        class MockJobController(JobController):
             pass
 
-        controller = DummyJobController(fake_config)
-        assert controller.config is fake_config
+        controller = MockJobController(mock_config)
+        assert controller.config is mock_config
 
     def test_is_abc_subclass(self):
         from abc import ABC

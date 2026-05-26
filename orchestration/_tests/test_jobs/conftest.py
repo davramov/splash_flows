@@ -17,7 +17,7 @@ def prefect_test_fixture():
 
 
 @pytest.fixture
-def fake_config():
+def mock_config():
     """Minimal BeamlineConfig-like namespace for tests that need a config object."""
     return types.SimpleNamespace(
         nersc_resources={
