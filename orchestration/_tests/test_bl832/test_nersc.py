@@ -933,7 +933,7 @@ def test_petiole_segment_flow_recon_failure(mocker, mock_config832):
 
 def test_moon_segment_flow_succeeds(mocker, mock_config832, mock_recon_success):
     """Recon + DINOv3-moon both succeed → flow returns True."""
-    from orchestration.flows.bl832.nersc import nersc_moon_segment_flow
+    from orchestration.flows.bl832.nersc import nersc_moon_segment_flow, NERSCLoginMethod
 
     mock_controller = mocker.MagicMock()
     mock_controller.reconstruct.return_value = mock_recon_success
@@ -952,7 +952,10 @@ def test_moon_segment_flow_succeeds(mocker, mock_config832, mock_recon_success):
     assert result is True
     mock_controller.reconstruct.assert_called_once()
     mock_dinov3_task.submit.assert_called_once_with(
-        recon_folder_path="folder/recfile", config=mock_config832, project="moon"
+        recon_folder_path="folder/recfile",
+        config=mock_config832,
+        project="moon",
+        login_method=NERSCLoginMethod.SFAPI,
     )
 
 
