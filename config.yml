@@ -225,7 +225,7 @@ hpc_submission_settings832:
     # ── SLURM resource allocation ─────────────────────────────────────────────
     qos: realtime
     account: als
-    reservation: "_CAP_SYNAPS_LIVEDEMO_CPU2"
+    reservation: ""
     cpus-per-task: 128
     walltime: "0:15:00"
 
