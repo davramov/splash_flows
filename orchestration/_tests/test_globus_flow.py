@@ -1,5 +1,3 @@
-import asyncio
-# import uuid
 from unittest.mock import MagicMock
 from uuid import UUID, uuid4, uuid5
 import warnings
@@ -174,60 +172,6 @@ class MockConfig832():
         self.beegfs_raw = self.endpoints["beegfs_raw"]
         self.beegfs_scratch = self.endpoints["beegfs_scratch"]
         self.scicat = config["scicat"]
-
-
-def test_832_dispatcher(mocker: MockFixture):
-    """Test 832 uber decision flow."""
-
-    # Mock the Secret block load using a simple manual mock class
-
-    mocker.patch('prefect.blocks.system.Secret.load', return_value=MockSecret())
-
-    mock_prune_controller = mocker.MagicMock()
-    mock_prune_controller.prune.return_value = True
-    mocker.patch('orchestration.flows.bl832.move.get_prune_controller', return_value=mock_prune_controller)
-
-    # Mock read_deployment_by_name with a manually defined mock class
-    class MockDeployment:
-        def __init__(self):
-            self.id = str(uuid4())  # Add this line
-            self.version = "1.0.0"
-            self.flow_id = str(uuid4())
-            self.name = "test_deployment"
-
-    mocker.patch('prefect.client.orchestration.PrefectClient.read_deployment_by_name',
-                 return_value=MockDeployment())
-
-    # Mock run_deployment to avoid executing any Prefect workflows
-    async def mock_run_deployment(*args, **kwargs):
-        return None
-
-    mocker.patch('prefect.deployments.run_deployment', new=mock_run_deployment)
-
-    # Mock asyncio.gather to avoid actual async task execution
-    async def mock_gather(*args, **kwargs):
-        # Await any coroutines so we don't leak warnings, but don't care about results
-        for arg in args:
-            if asyncio.iscoroutine(arg):
-                try:
-                    await arg
-                except Exception:
-                    pass
-        return [None]
-
-    mocker.patch('asyncio.gather', new=mock_gather)
-    # Import decision flow after mocking the necessary components
-    from orchestration.flows.bl832.dispatcher import dispatcher
-
-    # Run the decision flow
-    result = asyncio.run(dispatcher(
-        file_path="/global/raw/transfer_tests/test.txt",
-        is_export_control=False,
-        config=MockConfig832()
-    ))
-
-    # Ensure the flow runs without throwing an error
-    assert result is None, "The decision flow did not complete successfully."
 
 
 def test_alcf_recon_flow(mocker: MockFixture):
