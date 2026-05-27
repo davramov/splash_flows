@@ -67,7 +67,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NERSCJobController, 
         self,
         config: Config832,
         client: Client | httpx.Client | None = None,
-        login_method: NERSCLoginMethod = NERSCLoginMethod.IRIAPI,
+        login_method: NERSCLoginMethod = NERSCLoginMethod.SFAPI,
     ) -> None:
         NERSCJobController.__init__(self, config, client, login_method)
         TomographyHPCController.__init__(self, config)
@@ -1337,14 +1337,6 @@ def nersc_recon_flow(
     nersc_to_beegfs_zarr_future.result()
     logger.info("All transfers complete.")
 
-    # Register the reconstructed TIFFs in tiled
-    register_file_to_tiled(
-        path=Path(config.beegfs_scratch.root_path+tiff_file_path),
-        prefix="beamlines/bl832/scratch",
-        overwrite=False,
-        tags=["scratch", "bl832"],
-    )
-
     # Register the reconstructed ZARRs in tiled
     register_file_to_tiled(
         path=Path(config.beegfs_scratch.root_path+zarr_file_path),
@@ -1383,6 +1375,7 @@ def nersc_petiole_segment_flow(
     :param file_path: The path to the file to be processed.
     :param config: Configuration object for the flow.
     :param num_nodes: Number of nodes for reconstruction.
+    :login_method: Method to use for logging into NERSC (default: SFAPI).
     :return: True if reconstruction and at least one segmentation task succeeded.
     """
     logger = get_run_logger()
@@ -2009,7 +2002,7 @@ def nersc_multiresolution_task(
 
     :param file_path: Path to the reconstructed data folder to be processed.
     :param config: Configuration object for the flow.
-    :param login_method: NERSC API to authenticate against.
+    :param login_method: Method to use for logging into NERSC (default: SFAPI).
     :return: True if the task completed successfully, False otherwise.
     """
     logger = get_run_logger()
@@ -2077,7 +2070,7 @@ def nersc_segmentation_sam3_task(
     tomography_controller = get_controller(
         hpc_type=HPC.NERSC,
         config=config,
-        login_method=NERSCLoginMethod.IRIAPI
+        login_method=login_method
     )
     logger.info(f"Starting NERSC segmentation task for {recon_folder_path=}")
     nersc_segmentation_success = tomography_controller.segmentation_sam3(
