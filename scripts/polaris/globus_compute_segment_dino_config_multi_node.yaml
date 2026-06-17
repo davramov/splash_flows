@@ -27,6 +27,7 @@ engine:
     scheduler_options: "#PBS -l filesystems=home:eagle -l select=4:ngpus=4"
 
     worker_init: |
+      export PATH=/opt/pbs/bin:$PATH
       export TMPDIR=/tmp
       module use /soft/modulefiles
       module load conda
