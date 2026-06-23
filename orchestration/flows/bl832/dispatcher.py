@@ -143,6 +143,18 @@ async def dispatcher(
         logger.error(f"Invalid input parameters: {e}")
         raise
 
+    # Override is_export_control from Prefect Variable (safety net for IEC checkbox bug)
+    iec_override = Variable.get("is_export_control", default=False, _sync=True)
+    if iec_override:
+        logger.warning(
+            "is_export_control Prefect Variable is True — forcing IEC mode "
+            "(skipping NERSC transfer, reconstruction, and segmentation)"
+        )
+    else:
+        logger.info("is_export_control Prefect Variable is False — proceeding with normal flow")
+    # OR-merge so either the caller param OR the Prefect Variable can force IEC mode.
+    inputs.is_export_control = inputs.is_export_control or iec_override
+
     # Run new_file_832 first (synchronously)
     available_params = inputs.model_dump()
     try:
@@ -162,39 +174,42 @@ async def dispatcher(
         # Optionally, raise a specific ValueError
         raise ValueError("new_file_832 task Failed") from e
 
-    # Prepare ALCF and NERSC flows to run asynchronously, based on settings
-    tasks = []
-    if decision_settings.get("alcf_recon_flow/alcf_recon_flow"):
-        alcf_params = FlowParameterMapper.get_flow_parameters("alcf_recon_flow/alcf_recon_flow", available_params)
-        tasks.append(run_recon_flow_async("alcf_recon_flow/alcf_recon_flow", alcf_params))
-
-    if decision_settings.get("nersc_recon_flow/nersc_recon_flow"):
-        nersc_params = FlowParameterMapper.get_flow_parameters("nersc_recon_flow/nersc_recon_flow", available_params)
-        tasks.append(run_recon_flow_async("nersc_recon_flow/nersc_recon_flow", nersc_params))
-
-    if decision_settings.get("nersc_petiole_segment_flow/nersc_petiole_segment_flow"):
-        nersc_petiole_segment_params = FlowParameterMapper.get_flow_parameters(
-            "nersc_petiole_segment_flow/nersc_petiole_segment_flow", available_params
-        )
-        tasks.append(
-            run_recon_flow_async("nersc_petiole_segment_flow/nersc_petiole_segment_flow", nersc_petiole_segment_params)
-        )
-
-    if decision_settings.get("nersc_moon_segment_flow/nersc_moon_segment_flow"):
-        moon_params = FlowParameterMapper.get_flow_parameters(
-            "nersc_moon_segment_flow/nersc_moon_segment_flow", available_params
-        )
-        tasks.append(run_recon_flow_async("nersc_moon_segment_flow/nersc_moon_segment_flow", moon_params))
-
-    # Run ALCF and NERSC flows in parallel, if any
-    if tasks:
-        try:
-            await asyncio.gather(*tasks)
-        except Exception as e:
-            logger.error(f"Failed to run one or more tasks: {e}")
-            raise
+    if inputs.is_export_control:
+        logger.info("is_export_control=True — skipping ALCF recon, NERSC recon, and segmentation flows.")
     else:
-        logger.info("No ALCF or NERSC tasks to run based on decision settings.")
+        # Prepare ALCF and NERSC flows to run asynchronously, based on settings
+        tasks = []
+        if decision_settings.get("alcf_recon_flow/alcf_recon_flow"):
+            alcf_params = FlowParameterMapper.get_flow_parameters("alcf_recon_flow/alcf_recon_flow", available_params)
+            tasks.append(run_recon_flow_async("alcf_recon_flow/alcf_recon_flow", alcf_params))
+
+        if decision_settings.get("nersc_recon_flow/nersc_recon_flow"):
+            nersc_params = FlowParameterMapper.get_flow_parameters("nersc_recon_flow/nersc_recon_flow", available_params)
+            tasks.append(run_recon_flow_async("nersc_recon_flow/nersc_recon_flow", nersc_params))
+
+        if decision_settings.get("nersc_petiole_segment_flow/nersc_petiole_segment_flow"):
+            nersc_petiole_segment_params = FlowParameterMapper.get_flow_parameters(
+                "nersc_petiole_segment_flow/nersc_petiole_segment_flow", available_params
+            )
+            tasks.append(
+                run_recon_flow_async("nersc_petiole_segment_flow/nersc_petiole_segment_flow", nersc_petiole_segment_params)
+            )
+
+        if decision_settings.get("nersc_moon_segment_flow/nersc_moon_segment_flow"):
+            moon_params = FlowParameterMapper.get_flow_parameters(
+                "nersc_moon_segment_flow/nersc_moon_segment_flow", available_params
+            )
+            tasks.append(run_recon_flow_async("nersc_moon_segment_flow/nersc_moon_segment_flow", moon_params))
+
+        # Run ALCF and NERSC flows in parallel, if any
+        if tasks:
+            try:
+                await asyncio.gather(*tasks)
+            except Exception as e:
+                logger.error(f"Failed to run one or more tasks: {e}")
+                raise
+        else:
+            logger.info("No ALCF or NERSC tasks to run based on decision settings.")
 
     return None
 
@@ -209,7 +224,6 @@ if __name__ == "__main__":
         setup_decision_settings(
             alcf_recon=True,
             nersc_recon=True,
-            nersc_recon_multinode=True,
             new_file_832=True
         )
         # Run the main decision flow with the specified parameters

@@ -157,6 +157,8 @@ def process_new_832_file_task(
             scicat_ingest_flow(dataset_path=Path(file_path), ingester_spec=TOMO_INGESTOR_SPEC)
         except Exception as e:
             logger.error(f"SciCat ingest failed with {e}")
+    elif is_export_control:
+        logger.info("File is export controlled. Skipping NERSC transfer and SciCat ingest.")
 
     # Holding off from moving and registering Raw Data to Beegfs Tiled for storage concerns.
 

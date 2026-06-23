@@ -164,7 +164,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
         self,
         config: Config832,
         client: Client | httpx.Client | None = None,
-        login_method: NERSCLoginMethod = NERSCLoginMethod.IRIAPI,
+        login_method: NERSCLoginMethod = NERSCLoginMethod.SFAPI,
     ) -> None:
         TomographyHPCController.__init__(self, config)
         self.client = client
@@ -179,7 +179,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
     @staticmethod
     def create_nersc_client(
         config: Config832,
-        login_method: NERSCLoginMethod = NERSCLoginMethod.IRIAPI,
+        login_method: NERSCLoginMethod = NERSCLoginMethod.SFAPI,
     ) -> Client | httpx.Client:
         """Create and return a NERSC client for the requested login method.
 
@@ -196,7 +196,7 @@ class NERSCTomographyHPCController(TomographyHPCController, NerscStreamingMixin)
         Args:
             config: Config832 instance for accessing config settings needed during client creation.
             login_method: Which NERSC API to authenticate against.
-                Defaults to :attr:`NERSCLoginMethod.IRIAPI`.
+                Defaults to :attr:`NERSCLoginMethod.SFAPI`.
 
         Returns:
             An authenticated :class:`sfapi_client.Client` instance.
@@ -1768,6 +1768,7 @@ def nersc_recon_flow(
     file_path: str,
     num_nodes: Optional[int] = 4,
     config: Optional[Config832] = None,
+    login_method: Optional[NERSCLoginMethod] = NERSCLoginMethod.SFAPI,
 ) -> bool:
     """
     Perform multi-node tomography reconstruction on NERSC.
@@ -1775,6 +1776,7 @@ def nersc_recon_flow(
     :param file_path: Path to the file to reconstruct.
     :param num_nodes: Number of nodes to use for reconstruction.
     :param config: Configuration object (if None, a default Config832 will be created).
+    :param login_method: Method to use for logging into NERSC (SFAPI or IRIAPI).
     :return: True if successful, False otherwise.
     """
     logger = get_run_logger()
@@ -1787,7 +1789,7 @@ def nersc_recon_flow(
     controller = get_controller(
         hpc_type=HPC.NERSC,
         config=config,
-        login_method=NERSCLoginMethod.SFAPI
+        login_method=login_method
     )
     logger.info("NERSC reconstruction controller initialized")
 
@@ -1944,7 +1946,7 @@ def nersc_petiole_segment_flow(
     file_path: str,
     config: Optional[Config832] = None,
     num_nodes: Optional[int] = None,
-    login_method: Optional[NERSCLoginMethod] = NERSCLoginMethod.IRIAPI
+    login_method: Optional[NERSCLoginMethod] = NERSCLoginMethod.SFAPI
 ) -> bool:
     """
     Transfer raw data to NERSC, run reconstruction, then run SAM3 and DINOv3
@@ -1995,6 +1997,7 @@ def nersc_petiole_segment_flow(
         file_path=file_path,
         num_nodes=num_nodes,
         config=config,
+        login_method=login_method
     )
 
     if isinstance(recon_result, dict):
@@ -2031,24 +2034,24 @@ def nersc_petiole_segment_flow(
     logger.info("Reconstruction Successful.")
 
     # ── STEP 2: Transfer TIFFs to data832 ────────────────────────────────────
-    # logger.info("Transferring reconstructed TIFFs from NERSC pscratch to data832")
-    # try:
-    #     data832_tiff_future = globus_transfer_task.submit(
-    #         file_path=scratch_path_tiff,
-    #         source=config.nersc832_alsdev_pscratch_scratch,
-    #         destination=config.data832_scratch,
-    #         config=config,
-    #     )
-    #     logger.info("TIFF transfer to data832 submitted.")
-    # except Exception as e:
-    #     logger.error(f"Failed to transfer TIFFs to data832: {e}")
-    #     data832_tiff_transfer_success = False
+    logger.info("Transferring reconstructed TIFFs from NERSC pscratch to data832")
+    try:
+        data832_tiff_future = globus_transfer_task.submit(
+            file_path=scratch_path_tiff,
+            source=config.nersc832_alsdev_pscratch_scratch,
+            destination=config.data832_scratch,
+            config=config,
+        )
+        logger.info("TIFF transfer to data832 submitted.")
+    except Exception as e:
+        logger.error(f"Failed to transfer TIFFs to data832: {e}")
+        data832_tiff_transfer_success = False
 
     # ── STEP 3: SAM3 / DINOv3 ──────────────────────────
     logger.info("Submitting SAM3 and DINOv3 segmentation tasks concurrently.")
 
     sam3_future = nersc_segmentation_sam3_task.submit(
-        recon_folder_path=scratch_path_tiff, config=config
+        recon_folder_path=scratch_path_tiff, config=config, login_method=login_method
     )
     dinov3_future = nersc_segmentation_dinov3_task.submit(
         recon_folder_path=scratch_path_tiff, config=config, project="petiole", login_method=login_method
@@ -2060,15 +2063,15 @@ def nersc_petiole_segment_flow(
     logger.info(f"SAM3 segmentation result: {sam3_success}")
     if sam3_success:
         logger.info("Transferring SAM3 segmentation outputs to data832")
-        # sam3_segment_path = f"{folder_name}/seg{file_name}/sam3"
+        sam3_segment_path = f"{folder_name}/seg{file_name}/sam3"
         try:
-            # data832_sam3_future = globus_transfer_task.submit(
-            #     file_path=sam3_segment_path,
-            #     source=config.nersc832_alsdev_pscratch_scratch,
-            #     destination=config.data832_scratch,
-            #     config=config,
-            # )
-            # logger.info("SAM3 transfer to data832 submitted")
+            data832_sam3_future = globus_transfer_task.submit(
+                file_path=sam3_segment_path,
+                source=config.nersc832_alsdev_pscratch_scratch,
+                destination=config.data832_scratch,
+                config=config,
+            )
+            logger.info("SAM3 transfer to data832 submitted")
             data832_sam3_transfer_success = True
             logger.info(f"SAM3 transfer to data832 success: {data832_sam3_transfer_success}")
         except Exception as e:
@@ -2078,15 +2081,15 @@ def nersc_petiole_segment_flow(
     logger.info(f"DINOv3 segmentation result: {dinov3_success}")
     if dinov3_success:
         logger.info("Transferring DINOv3 segmentation outputs to data832")
-        # dinov3_segment_path = f"{folder_name}/seg{file_name}/dino"
+        dinov3_segment_path = f"{folder_name}/seg{file_name}/dino"
         try:
-            # data832_dinov3_future = globus_transfer_task.submit(
-            #     file_path=dinov3_segment_path,
-            #     source=config.nersc832_alsdev_pscratch_scratch,
-            #     destination=config.data832_scratch,
-            #     config=config,
-            # )
-            # logger.info("DINOv3 transfer to data832 submitted")
+            data832_dinov3_future = globus_transfer_task.submit(
+                file_path=dinov3_segment_path,
+                source=config.nersc832_alsdev_pscratch_scratch,
+                destination=config.data832_scratch,
+                config=config,
+            )
+            logger.info("DINOv3 transfer to data832 submitted")
             data832_dinov3_transfer_success = True
             logger.info(f"DINOv3 transfer to data832 success: {data832_dinov3_transfer_success}")
         except Exception as e:
@@ -2101,22 +2104,22 @@ def nersc_petiole_segment_flow(
         logger.info("Running segmentation combination.")
 
         combine_future = nersc_combine_segmentations_task.submit(
-            recon_folder_path=scratch_path_tiff, config=config
+            recon_folder_path=scratch_path_tiff, config=config, login_method=login_method
         )
 
         combine_success = combine_future.result()
         logger.info(f"Combination result: {combine_success}")
         if combine_success:
             logger.info("Transferring combined segmentation outputs to data832")
-            # combined_segment_path = f"{folder_name}/seg{file_name}/combined/sam_dino"
+            combined_segment_path = f"{folder_name}/seg{file_name}/combined/sam_dino"
             try:
-                # data832_combined_future = globus_transfer_task.submit(
-                #     file_path=combined_segment_path,
-                #     source=config.nersc832_alsdev_pscratch_scratch,
-                #     destination=config.data832_scratch,
-                #     config=config,
-                # )
-                # logger.info("Combined transfer to data832 submitted")
+                data832_combined_future = globus_transfer_task.submit(
+                    file_path=combined_segment_path,
+                    source=config.nersc832_alsdev_pscratch_scratch,
+                    destination=config.data832_scratch,
+                    config=config,
+                )
+                logger.info("Combined transfer to data832 submitted")
                 data832_combined_transfer_success = True
                 logger.info(f"Combined transfer to data832 success: {data832_combined_transfer_success}")
             except Exception as e:
@@ -2151,67 +2154,67 @@ def nersc_petiole_segment_flow(
     )
 
     # ── STEP 6: Pruning ───────────────────────────────────────────────────────
-    # logger.info("Scheduling file pruning tasks.")
-    # prune_controller = get_prune_controller(prune_type=PruneMethod.GLOBUS, config=config)
+    logger.info("Scheduling file pruning tasks.")
+    prune_controller = get_prune_controller(prune_type=PruneMethod.GLOBUS, config=config)
 
-    # try:
-    #     prune_controller.prune(
-    #         file_path=f"{folder_name}/{path.name}",
-    #         source_endpoint=config.nersc832_alsdev_pscratch_raw,
-    #         check_endpoint=None,
-    #         days_from_now=1.0
-    #     )
-    # except Exception as e:
-    #     logger.warning(f"Failed to schedule raw data pruning: {e}")
+    try:
+        prune_controller.prune(
+            file_path=f"{folder_name}/{path.name}",
+            source_endpoint=config.nersc832_alsdev_pscratch_raw,
+            check_endpoint=None,
+            days_from_now=1.0
+        )
+    except Exception as e:
+        logger.warning(f"Failed to schedule raw data pruning: {e}")
 
-    # if nersc_reconstruction_success:
-    #     try:
-    #         prune_controller.prune(
-    #             file_path=scratch_path_tiff,
-    #             source_endpoint=config.nersc832_alsdev_pscratch_scratch,
-    #             check_endpoint=config.data832_scratch if data832_tiff_transfer_success else None,
-    #             days_from_now=1.0
-    #         )
-    #     except Exception as e:
-    #         logger.warning(f"Failed to schedule reconstruction data pruning: {e}")
+    if nersc_reconstruction_success:
+        try:
+            prune_controller.prune(
+                file_path=scratch_path_tiff,
+                source_endpoint=config.nersc832_alsdev_pscratch_scratch,
+                check_endpoint=config.data832_scratch if data832_tiff_transfer_success else None,
+                days_from_now=1.0
+            )
+        except Exception as e:
+            logger.warning(f"Failed to schedule reconstruction data pruning: {e}")
 
-    # if any_seg_success:
-    #     try:
-    #         prune_controller.prune(
-    #             file_path=scratch_path_segment,
-    #             source_endpoint=config.nersc832_alsdev_pscratch_scratch,
-    #             check_endpoint=config.data832_scratch if any([
-    #                 data832_sam3_transfer_success,
-    #                 data832_dinov3_transfer_success,
-    #             ]) else None,
-    #             days_from_now=1.0
-    #         )
-    #     except Exception as e:
-    #         logger.warning(f"Failed to schedule segmentation data pruning: {e}")
+    if any_seg_success:
+        try:
+            prune_controller.prune(
+                file_path=scratch_path_segment,
+                source_endpoint=config.nersc832_alsdev_pscratch_scratch,
+                check_endpoint=config.data832_scratch if any([
+                    data832_sam3_transfer_success,
+                    data832_dinov3_transfer_success,
+                ]) else None,
+                days_from_now=1.0
+            )
+        except Exception as e:
+            logger.warning(f"Failed to schedule segmentation data pruning: {e}")
 
-    # if data832_tiff_transfer_success:
-    #     try:
-    #         prune_controller.prune(
-    #             file_path=scratch_path_tiff,
-    #             source_endpoint=config.data832_scratch,
-    #             check_endpoint=None,
-    #             days_from_now=30.0
-    #         )
-    #     except Exception as e:
-    #         logger.warning(f"Failed to schedule data832 tiff pruning: {e}")
+    if data832_tiff_transfer_success:
+        try:
+            prune_controller.prune(
+                file_path=scratch_path_tiff,
+                source_endpoint=config.data832_scratch,
+                check_endpoint=None,
+                days_from_now=30.0
+            )
+        except Exception as e:
+            logger.warning(f"Failed to schedule data832 tiff pruning: {e}")
 
-    # if any([data832_sam3_transfer_success,
-    #         data832_dinov3_transfer_success,
-    #         data832_combined_transfer_success]):
-    #     try:
-    #         prune_controller.prune(
-    #             file_path=scratch_path_segment,
-    #             source_endpoint=config.data832_scratch,
-    #             check_endpoint=None,
-    #             days_from_now=30.0
-    #         )
-    #     except Exception as e:
-    #         logger.warning(f"Failed to schedule data832 segment pruning: {e}")
+    if any([data832_sam3_transfer_success,
+            data832_dinov3_transfer_success,
+            data832_combined_transfer_success]):
+        try:
+            prune_controller.prune(
+                file_path=scratch_path_segment,
+                source_endpoint=config.data832_scratch,
+                check_endpoint=None,
+                days_from_now=30.0
+            )
+        except Exception as e:
+            logger.warning(f"Failed to schedule data832 segment pruning: {e}")
 
     if nersc_reconstruction_success and any_seg_success:
         logger.info("NERSC reconstruction + multi-segmentation flow completed successfully.")
@@ -2229,6 +2232,7 @@ def nersc_moon_segment_flow(
     file_path: str,
     config: Config832 | None = None,
     num_nodes: int | None = None,
+    login_method: Optional[NERSCLoginMethod] = NERSCLoginMethod.SFAPI
 ) -> bool:
     """Reconstruct a lunar regolith scan and run DINOv3-moon segmentation.
 
@@ -2239,6 +2243,7 @@ def nersc_moon_segment_flow(
     :param file_path: Path to the raw .h5 file to be processed.
     :param config: Configuration object for the flow.
     :param num_nodes: Number of nodes for reconstruction.
+    :param login_method: Method to use for logging into NERSC (SFAPI or IRIAPI).
     :return: True if reconstruction and segmentation both succeeded.
     """
     logger = get_run_logger()
@@ -2255,7 +2260,7 @@ def nersc_moon_segment_flow(
 
     logger.info(f"Starting NERSC reconstruction + DINOv3-moon flow for {file_path=}")
 
-    controller = get_controller(hpc_type=HPC.NERSC, config=config)
+    controller = get_controller(hpc_type=HPC.NERSC, config=config, login_method=login_method)
 
     if num_nodes is None:
         num_nodes = config.nersc_recon_settings.get("num_nodes", 4)
@@ -2311,7 +2316,7 @@ def nersc_moon_segment_flow(
     # ── STEP 3: DINOv3-moon segmentation ─────────────────────────────────────
     logger.info("Submitting DINOv3-moon segmentation task.")
     moon_future = nersc_segmentation_dinov3_task.submit(
-        recon_folder_path=scratch_path_tiff, config=config, project="moon"
+        recon_folder_path=scratch_path_tiff, config=config, project="moon", login_method=login_method
     )
 
     moon_success = moon_future.result()
@@ -2500,11 +2505,19 @@ def nersc_streaming_flow(
 def pull_shifter_image_flow(
     image: Optional[str] = None,
     config: Optional[Config832] = None,
+    login_method: Optional[NERSCLoginMethod] = NERSCLoginMethod.SFAPI
 ) -> bool:
     """
     Pull a container image into NERSC's Shifter cache.
 
     Run this once when the container image is updated.
+
+    Args:
+        image: The name of the container image to pull. If None, uses the default recon image from the config.
+        config: Configuration object for the flow. If None, a default Config832 will be created.
+        login_method: Method to use for logging into NERSC (SFAPI or IRIAPI).
+    Returns:
+        True if the image was pulled successfully, False otherwise.
     """
     logger = get_run_logger()
 
@@ -2518,7 +2531,8 @@ def pull_shifter_image_flow(
 
     controller = get_controller(
         hpc_type=HPC.NERSC,
-        config=config
+        config=config,
+        login_method=login_method
     )
 
     # Check if already cached
@@ -2536,7 +2550,7 @@ def nersc_reconstruction_task(
     file_path: str,
     num_nodes: int = 4,
     config: Optional[Config832] = None,
-    login_method: Optional[NERSCLoginMethod] = NERSCLoginMethod.IRIAPI
+    login_method: Optional[NERSCLoginMethod] = NERSCLoginMethod.SFAPI
 ) -> dict:
     """
     Run tomography reconstruction at NERSC Perlmutter.
@@ -2544,6 +2558,7 @@ def nersc_reconstruction_task(
     :param file_path: Path to the raw HDF5 file to reconstruct.
     :param num_nodes: Number of nodes to use for reconstruction.
     :param config: Configuration object for the flow.
+    :param login_method: NERSC API to authenticate against.
     :return: Dict with keys 'success', 'job_id', 'timing'.
     """
     logger = get_run_logger()
@@ -2560,13 +2575,14 @@ def nersc_reconstruction_task(
 def nersc_multiresolution_task(
     file_path: str,
     config: Optional[Config832] = None,
-    login_method: Optional[NERSCLoginMethod] = NERSCLoginMethod.IRIAPI
+    login_method: Optional[NERSCLoginMethod] = NERSCLoginMethod.SFAPI
 ) -> bool:
     """
     Run multiresolution task at NERSC.
 
     :param file_path: Path to the reconstructed data folder to be processed.
     :param config: Configuration object for the flow.
+    :param login_method: NERSC API to authenticate against.
     :return: True if the task completed successfully, False otherwise.
     """
     logger = get_run_logger()
@@ -2614,12 +2630,14 @@ def nersc_multiresolution_integration_test() -> bool:
 def nersc_segmentation_sam3_task(
     recon_folder_path: str,
     config: Optional[Config832] = None,
+    login_method: Optional[NERSCLoginMethod] = NERSCLoginMethod.SFAPI,
 ) -> bool:
     """
     Run segmentation task at NERSC.
 
     :param recon_folder_path: Path to the reconstructed data folder to be processed.
     :param config: Configuration object for the flow.
+    :param login_method: NERSC API to authenticate against.
     :return: True if the task completed successfully, False otherwise.
     """
     logger = get_run_logger()
@@ -2632,7 +2650,7 @@ def nersc_segmentation_sam3_task(
     tomography_controller = get_controller(
         hpc_type=HPC.NERSC,
         config=config,
-        login_method=NERSCLoginMethod.IRIAPI
+        login_method=login_method
     )
     logger.info(f"Starting NERSC segmentation task for {recon_folder_path=}")
     nersc_segmentation_success = tomography_controller.segmentation_sam3(
@@ -2653,13 +2671,25 @@ def nersc_segmentation_dinov3_task(
     recon_folder_path: str,
     config: Optional[Config832] = None,
     project: Optional[str] = "petiole",
-    login_method: Optional[NERSCLoginMethod] = NERSCLoginMethod.IRIAPI
+    login_method: Optional[NERSCLoginMethod] = NERSCLoginMethod.SFAPI
 ) -> bool:
+    """
+    Run DINOv3 segmentation task at NERSC.
+
+    Args:
+        recon_folder_path (str): Path to the reconstructed data folder to be processed.
+        config (Optional[Config832], optional): Configuration object for the flow. Defaults to None.
+        project (Optional[str], optional): Project name. Defaults to "petiole".
+        login_method (Optional[NERSCLoginMethod], optional): NERSC API to authenticate against. Defaults to SFAPI.
+
+    Returns:
+        bool: True if the segmentation task completed successfully, False otherwise.
+    """
     logger = get_run_logger()
     if config is None:
         logger.info("No config provided, using default Config832.")
         config = Config832()
-    tomography_controller = get_controller(hpc_type=HPC.NERSC, config=config, login_method=NERSCLoginMethod.IRIAPI)
+    tomography_controller = get_controller(hpc_type=HPC.NERSC, config=config, login_method=login_method)
     logger.info(f"Starting NERSC DINOv3 segmentation task for {recon_folder_path=}, {project=}")
     success = tomography_controller.segmentation_dinov3(recon_folder_path=recon_folder_path, project=project)
     if not success:
@@ -2673,12 +2703,24 @@ def nersc_segmentation_dinov3_task(
 def nersc_combine_segmentations_task(
     recon_folder_path: str,
     config: Optional[Config832] = None,
+    login_method: Optional[NERSCLoginMethod] = NERSCLoginMethod.SFAPI,
 ) -> bool:
+    """
+    Run combine segmentations task at NERSC
+
+    Args:
+        recon_folder_path (str): Path to the reconstructed data folder to be processed.
+        config (Optional[Config832], optional): Configuration object for the flow. Defaults to None.
+        login_method (Optional[NERSCLoginMethod], optional): NERSC API to authenticate against. Defaults to SFAPI.
+
+    Returns:
+        bool: True if the combine segmentations task completed successfully, False otherwise.
+    """
     logger = get_run_logger()
     if config is None:
         logger.info("No config provided, using default Config832.")
         config = Config832()
-    tomography_controller = get_controller(hpc_type=HPC.NERSC, config=config, login_method=NERSCLoginMethod.IRIAPI)
+    tomography_controller = get_controller(hpc_type=HPC.NERSC, config=config, login_method=login_method)
     logger.info(f"Starting NERSC combine segmentations task for {recon_folder_path=}")
     success = tomography_controller.combine_segmentations(recon_folder_path=recon_folder_path)
     if not success:
