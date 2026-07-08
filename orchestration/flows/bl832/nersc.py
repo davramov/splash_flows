@@ -1909,18 +1909,21 @@ def nersc_recon_flow(
     logger.info("All transfers complete.")
 
     # Register the reconstructed TIFFs in tiled
-    register_file_to_tiled(
-        path=Path(config.beegfs_scratch.root_path+tiff_file_path),
-        prefix="beamlines/bl832/scratch",
-        overwrite=False,
-        tags=["scratch", "bl832"],
-    )
+    # register_file_to_tiled(
+    #     path=Path(config.beegfs_scratch.root_path+tiff_file_path),
+    #     prefix="beamlines/bl832/scratch",
+    #     overwrite=False,
+    #     tags=["scratch", "bl832"],
+    # )
+
+    #TODO: get project ID from the raw.h5 metadata and add it to the tags for the zarr registration
+    # Probably will only work if the data is still on Spot832
 
     # Register the reconstructed ZARRs in tiled
     register_file_to_tiled(
         path=Path(config.beegfs_scratch.root_path+zarr_file_path),
         prefix="beamlines/bl832/scratch",
-        overwrite=False,
+        overwrite=True,
         tags=["8.3.2", folder_name],
     )
 
