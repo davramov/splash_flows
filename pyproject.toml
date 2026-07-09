@@ -29,7 +29,7 @@ dependencies = [
     "sfapi_client",
     "starlette==1.0.0",
     "tiled[all]==0.2.8",
-    "watchfiles"
+    "watchfiles",
     "zarr==2.18.3"
 ]
 
