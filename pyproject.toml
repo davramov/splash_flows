@@ -18,6 +18,7 @@ dependencies = [
     "mkdocs-material",
     "mkdocs-mermaid2-plugin",
     "mlflow==2.22.0",
+    "numcodecs==0.13.1",
     "numpy>=1.26.4",
     "pillow",
     "prefect==3.4.2",
