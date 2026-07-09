@@ -30,6 +30,7 @@ dependencies = [
     "starlette==1.0.0",
     "tiled[all]==0.2.8",
     "watchfiles"
+    "zarr==2.18.3"
 ]
 
 [dependency-groups]
