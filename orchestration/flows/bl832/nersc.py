@@ -1923,7 +1923,7 @@ def nersc_recon_flow(
     # Register the reconstructed ZARRs in tiled
     register_file_to_tiled(
         # path=Path(config.beegfs_scratch.root_path+zarr_file_path),
-        path=Path("/global/beegfs/beamlines/bl832/" + config.beegfs_scratch.root_path + zarr_file_path),
+        path=Path("/global/beegfs/beamlines/bl832/" + config.beegfs_scratch.root_path + f"/{folder_name}"),
         prefix=f"beamlines/bl832/processed/{folder_name}",
         overwrite=True,
         tags=["8.3.2", folder_name],
