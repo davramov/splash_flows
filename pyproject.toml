@@ -18,7 +18,6 @@ dependencies = [
     "mkdocs-material",
     "mkdocs-mermaid2-plugin",
     "mlflow==2.22.0",
-    "numcodecs==0.13.1",
     "numpy>=1.26.4",
     "pillow",
     "prefect==3.4.2",
@@ -29,9 +28,8 @@ dependencies = [
     "scicat_beamline @ git+https://github.com/als-computing/scicat_beamline.git@4828273f5f49ba4eba5442728729e0545b3f5b79",
     "sfapi_client",
     "starlette==1.0.0",
-    "tiled[all]==0.2.11",
+    "tiled[all]==0.2.8",
     "watchfiles",
-    "zarr==2.18.3"
 ]
 
 [dependency-groups]
