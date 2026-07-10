@@ -1921,13 +1921,22 @@ def nersc_recon_flow(
     # Probably will only work if the data is still on Spot832
 
     # Register the reconstructed ZARRs in tiled
+    p = Path("/global/beegfs/beamlines/bl832/" + config.beegfs_scratch.root_path + zarr_file_path)
+    logger.info(f"Registering Zarr file in Tiled: {p}")
     register_file_to_tiled(
         # path=Path(config.beegfs_scratch.root_path+zarr_file_path),
-        path=Path("/global/beegfs/beamlines/bl832/" + config.beegfs_scratch.root_path + zarr_file_path),
+        path=p,
         prefix=f"beamlines/bl832/processed/{folder_name}",
-        overwrite=True,
+        overwrite=False,
         tags=["8.3.2", folder_name],
     )
+
+# register_file_to_tiled(
+#     path=Path("/global/beegfs/beamlines/bl832/processed/dabramov/rec20260224_140520_petiole5.zarr"),
+#     prefix=f"beamlines/bl832/processed/dabramov",
+#     overwrite=False,
+#     tags=["8.3.2", "dabramov"],
+# )
 
     logger.info("Scheduling pruning tasks.")
     schedule_pruning(
